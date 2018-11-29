@@ -19,4 +19,12 @@ spec:
       - name: audit-proxy
         image: aunem/audit-proxy:latest
         ports:
-        - containerPort: 8080
+        - containerPort: 443
+        volumeMounts:
+          - name: webhook-certs
+            mountPath: /etc/webhook/certs
+            readOnly: true
+      volumes:
+        - name: webhook-certs
+          secret:
+            secretName: audit-proxy-webhook-certs

@@ -9,4 +9,7 @@ spec:
     - ResponseComplete
   webhook:
     clientConfig:
-      url: "http://audit.audit-proxy.svc"
+      service:
+        name: audit-proxy
+        namespace: audit
+      caBundle: ${CA_BUNDLE}

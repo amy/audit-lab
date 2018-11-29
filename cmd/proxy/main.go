@@ -17,16 +17,23 @@ limitations under the License.
 package main
 
 import (
+	"context"
+	"crypto/tls"
+	"flag"
+	"fmt"
 	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
 
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/serializer/json"
 	auditinstall "k8s.io/apiserver/pkg/apis/audit/install"
 	auditv1 "k8s.io/apiserver/pkg/apis/audit/v1"
 	"k8s.io/apiserver/pkg/audit"
+	"k8s.io/klog/glog"
 )
 
 var (
@@ -35,15 +42,58 @@ var (
 	decoder runtime.Decoder
 )
 
+// Parameters for server
+type Parameters struct {
+	port           int    // webhook server port
+	certFile       string // path to the x509 certificate for https
+	keyFile        string // path to the x509 private key matching `CertFile`
+	sidecarCfgFile string // path to sidecar injector configuration file
+}
+
 func main() {
+	var parameters Parameters
+
+	// get command line parameters
+	flag.IntVar(&parameters.port, "port", 443, "Webhook server port.")
+	flag.StringVar(&parameters.certFile, "tlsCertFile", "/etc/webhook/certs/cert.pem", "File containing the x509 Certificate for HTTPS.")
+	flag.StringVar(&parameters.keyFile, "tlsKeyFile", "/etc/webhook/certs/key.pem", "File containing the x509 private key to --tlsCertFile.")
+	flag.Parse()
+
 	scheme := runtime.NewScheme()
 	auditinstall.Install(scheme)
-	serializer := json.NewSerializer(json.DefaultMetaFactory, scheme, scheme, false)
+	serializer := json.NewYAMLSerializer(json.DefaultMetaFactory, scheme, scheme)
 	encoder = audit.Codecs.EncoderForVersion(serializer, auditv1.SchemeGroupVersion)
 	decoder = audit.Codecs.UniversalDecoder(auditv1.SchemeGroupVersion)
 
-	http.HandleFunc("/", handler)
-	log.Fatal(http.ListenAndServe(":8080", nil))
+	pair, err := tls.LoadX509KeyPair(parameters.certFile, parameters.keyFile)
+	if err != nil {
+		glog.Errorf("Filed to load key pair: %v", err)
+	}
+
+	server := &http.Server{
+		Addr:      fmt.Sprintf(":%v", parameters.port),
+		TLSConfig: &tls.Config{Certificates: []tls.Certificate{pair}},
+	}
+
+	// define http server and server handler
+	mux := http.NewServeMux()
+	mux.HandleFunc("/", handler)
+	server.Handler = mux
+
+	// start webhook server in new rountine
+	go func() {
+		if err := server.ListenAndServeTLS("", ""); err != nil {
+			glog.Errorf("Filed to listen and serve webhook server: %v", err)
+		}
+	}()
+
+	// listening OS shutdown singal
+	signalChan := make(chan os.Signal, 1)
+	signal.Notify(signalChan, syscall.SIGINT, syscall.SIGTERM)
+	<-signalChan
+
+	glog.Infof("Got OS shutdown signal, shutting down wenhook server gracefully...")
+	server.Shutdown(context.Background())
 }
 
 func handler(w http.ResponseWriter, req *http.Request) {
@@ -64,6 +114,7 @@ func handler(w http.ResponseWriter, req *http.Request) {
 		if err != nil {
 			log.Fatalf("could not encode audit event: %v", err)
 		}
+		fmt.Printf("\n----------\n\n")
 	}
 	w.WriteHeader(http.StatusOK)
 	return
