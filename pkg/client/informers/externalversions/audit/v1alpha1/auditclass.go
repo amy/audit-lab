@@ -19,12 +19,12 @@ limitations under the License.
 package v1alpha1
 
 import (
-	versioned "pbarker/audit-lab/pkg/client/clientset/versioned"
-	internalinterfaces "pbarker/audit-lab/pkg/client/informers/externalversions/internalinterfaces"
-	v1alpha1 "pbarker/audit-lab/pkg/client/listers/audit/v1alpha1"
 	time "time"
 
 	auditv1alpha1 "github.com/pbarker/audit-lab/pkg/apis/audit/v1alpha1"
+	versioned "github.com/pbarker/audit-lab/pkg/client/clientset/versioned"
+	internalinterfaces "github.com/pbarker/audit-lab/pkg/client/informers/externalversions/internalinterfaces"
+	v1alpha1 "github.com/pbarker/audit-lab/pkg/client/listers/audit/v1alpha1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	runtime "k8s.io/apimachinery/pkg/runtime"
 	watch "k8s.io/apimachinery/pkg/watch"

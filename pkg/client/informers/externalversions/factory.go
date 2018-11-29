@@ -19,13 +19,13 @@ limitations under the License.
 package externalversions
 
 import (
-	versioned "pbarker/audit-lab/pkg/client/clientset/versioned"
-	audit "pbarker/audit-lab/pkg/client/informers/externalversions/audit"
-	internalinterfaces "pbarker/audit-lab/pkg/client/informers/externalversions/internalinterfaces"
 	reflect "reflect"
 	sync "sync"
 	time "time"
 
+	versioned "github.com/pbarker/audit-lab/pkg/client/clientset/versioned"
+	audit "github.com/pbarker/audit-lab/pkg/client/informers/externalversions/audit"
+	internalinterfaces "github.com/pbarker/audit-lab/pkg/client/informers/externalversions/internalinterfaces"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	runtime "k8s.io/apimachinery/pkg/runtime"
 	schema "k8s.io/apimachinery/pkg/runtime/schema"

@@ -19,9 +19,8 @@ limitations under the License.
 package v1alpha1
 
 import (
-	"pbarker/audit-lab/pkg/client/clientset/versioned/scheme"
-
 	v1alpha1 "github.com/pbarker/audit-lab/pkg/apis/audit/v1alpha1"
+	"github.com/pbarker/audit-lab/pkg/client/clientset/versioned/scheme"
 	serializer "k8s.io/apimachinery/pkg/runtime/serializer"
 	rest "k8s.io/client-go/rest"
 )

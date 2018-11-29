@@ -19,8 +19,8 @@ limitations under the License.
 package audit
 
 import (
-	v1alpha1 "pbarker/audit-lab/pkg/client/informers/externalversions/audit/v1alpha1"
-	internalinterfaces "pbarker/audit-lab/pkg/client/informers/externalversions/internalinterfaces"
+	v1alpha1 "github.com/pbarker/audit-lab/pkg/client/informers/externalversions/audit/v1alpha1"
+	internalinterfaces "github.com/pbarker/audit-lab/pkg/client/informers/externalversions/internalinterfaces"
 )
 
 // Interface provides access to each of this group's versions.

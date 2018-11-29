@@ -19,10 +19,9 @@ limitations under the License.
 package fake
 
 import (
-	clientset "pbarker/audit-lab/pkg/client/clientset/versioned"
-	auditv1alpha1 "pbarker/audit-lab/pkg/client/clientset/versioned/typed/audit/v1alpha1"
-	fakeauditv1alpha1 "pbarker/audit-lab/pkg/client/clientset/versioned/typed/audit/v1alpha1/fake"
-
+	clientset "github.com/pbarker/audit-lab/pkg/client/clientset/versioned"
+	auditv1alpha1 "github.com/pbarker/audit-lab/pkg/client/clientset/versioned/typed/audit/v1alpha1"
+	fakeauditv1alpha1 "github.com/pbarker/audit-lab/pkg/client/clientset/versioned/typed/audit/v1alpha1/fake"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/discovery"

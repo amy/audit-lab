@@ -67,13 +67,16 @@ const (
 type Controller struct {
 	// kubeclientset is a standard kubernetes clientset
 	kubeclientset kubernetes.Interface
-	// auditclientset is a clientset for our own API group
-	auditclientset clientset.Interface
+	// auditcrdclientset is a clientset for our own API group
+	auditcrdclientset clientset.Interface
 
 	deploymentsLister appslisters.DeploymentLister
 	deploymentsSynced cache.InformerSynced
-	auditcrdLister        listers.AuditLister
-	auditcrdSynced        cache.InformerSynced
+	auditClassLister        listers.AuditClassLister
+	auditClassSynced        cache.InformerSynced
+
+	auditBackendLister  listers.AuditBackendLister
+	auditBackendSynced  cache.InformerSynced
 
 	// workqueue is a rate limited work queue. This is used to queue work to be
 	// processed instead of performing it as soon as a change happens. This
@@ -89,9 +92,10 @@ type Controller struct {
 // NewController returns a new sample controller
 func NewController(
 	kubeclientset kubernetes.Interface,
-	sampleclientset clientset.Interface,
+	auditcrdclientset clientset.Interface,
 	deploymentInformer appsinformers.DeploymentInformer,
-	fooInformer informers.FooInformer) *Controller {
+	auditBackendInformer informers.AuditBackendInformer,
+	auditClassInformer informers.AuditClassInformer) *Controller {
 
 	// Create event broadcaster
 	// Add sample-controller types to the default Kubernetes Scheme so Events can be
@@ -105,21 +109,30 @@ func NewController(
 
 	controller := &Controller{
 		kubeclientset:     kubeclientset,
-		sampleclientset:   sampleclientset,
+		auditcrdclientset:   auditcrdclientset,
 		deploymentsLister: deploymentInformer.Lister(),
 		deploymentsSynced: deploymentInformer.Informer().HasSynced,
-		foosLister:        fooInformer.Lister(),
-		foosSynced:        fooInformer.Informer().HasSynced,
+		auditBackendLister:        auditBackendInformer.Lister(),
+		auditBackendSynced:        auditBackendInformer.Informer().HasSynced,
+		auditClassLister:        auditClassInformer.Lister(),
+		auditClassSynced:        auditClassInformer.Informer().HasSynced,
 		workqueue:         workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "Foos"),
 		recorder:          recorder,
 	}
 
 	klog.Info("Setting up event handlers")
 	// Set up an event handler for when Foo resources change
-	fooInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc: controller.enqueueFoo,
+	auditBackendInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc: controller.enqueueAuditBackend,
 		UpdateFunc: func(old, new interface{}) {
-			controller.enqueueFoo(new)
+			controller.enqueueAuditBackend(new)
+		},
+	})
+
+	auditClassInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc: controller.enqueueAuditClass,
+		UpdateFunc: func(old, new interface{}) {
+			controller.enqueueAuditClass(new)
 		},
 	})
 	// Set up an event handler for when Deployment resources change. This
@@ -159,7 +172,7 @@ func (c *Controller) Run(threadiness int, stopCh <-chan struct{}) error {
 
 	// Wait for the caches to be synced before starting workers
 	klog.Info("Waiting for informer caches to sync")
-	if ok := cache.WaitForCacheSync(stopCh, c.deploymentsSynced, c.foosSynced); !ok {
+	if ok := cache.WaitForCacheSync(stopCh, c.deploymentsSynced, c.auditBackendSynced, c.auditClassSynced); !ok {
 		return fmt.Errorf("failed to wait for caches to sync")
 	}
 
@@ -334,10 +347,20 @@ func (c *Controller) updateFooStatus(foo *samplev1alpha1.Foo, deployment *appsv1
 	return err
 }
 
-// enqueueFoo takes a Foo resource and converts it into a namespace/name
+// enqueueAuditBackend takes a Foo resource and converts it into a namespace/name
 // string which is then put onto the work queue. This method should *not* be
 // passed resources of any type other than Foo.
-func (c *Controller) enqueueFoo(obj interface{}) {
+func (c *Controller) enqueueAuditBackend(obj interface{}) {
+	var key string
+	var err error
+	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
+		runtime.HandleError(err)
+		return
+	}
+	c.workqueue.AddRateLimited(key)
+}
+
+func (c *Controller) enqueueAuditClass(obj interface{}) {
 	var key string
 	var err error
 	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
