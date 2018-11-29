@@ -33,16 +33,17 @@ import (
 	"k8s.io/client-go/kubernetes/scheme"
 	typedcorev1 "k8s.io/client-go/kubernetes/typed/core/v1"
 	appslisters "k8s.io/client-go/listers/apps/v1"
+	corelisters "k8s.io/client-go/listers/core/v1"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog"
 
-	samplev1alpha1 "k8s.io/sample-controller/pkg/apis/samplecontroller/v1alpha1"
-	clientset "k8s.io/sample-controller/pkg/client/clientset/versioned"
-	samplescheme "k8s.io/sample-controller/pkg/client/clientset/versioned/scheme"
-	informers "k8s.io/sample-controller/pkg/client/informers/externalversions/samplecontroller/v1alpha1"
-	listers "k8s.io/sample-controller/pkg/client/listers/samplecontroller/v1alpha1"
+	auditcrdv1alpha1 "github.com/pbarker/audit-lab/pkg/apis/audit/v1alpha1"
+	clientset "github.com/pbarker/audit-lab/pkg/client/clientset/versioned"
+	samplescheme "github.com/pbarker/audit-lab/pkg/client/clientset/versioned/scheme"
+	informers "github.com/pbarker/audit-lab/pkg/client/informers/externalversions/audit/v1alpha1"
+	listers "github.com/pbarker/audit-lab/pkg/client/listers/audit/v1alpha1"
 )
 
 const controllerAgentName = "sample-controller"
@@ -66,13 +67,13 @@ const (
 type Controller struct {
 	// kubeclientset is a standard kubernetes clientset
 	kubeclientset kubernetes.Interface
-	// sampleclientset is a clientset for our own API group
-	sampleclientset clientset.Interface
+	// auditclientset is a clientset for our own API group
+	auditclientset clientset.Interface
 
 	deploymentsLister appslisters.DeploymentLister
 	deploymentsSynced cache.InformerSynced
-	foosLister        listers.FooLister
-	foosSynced        cache.InformerSynced
+	auditcrdLister        listers.AuditLister
+	auditcrdSynced        cache.InformerSynced
 
 	// workqueue is a rate limited work queue. This is used to queue work to be
 	// processed instead of performing it as soon as a change happens. This

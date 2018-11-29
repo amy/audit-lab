@@ -75,7 +75,6 @@ type AuditBackendStatus struct {
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 
 // AuditBackend is the Schema for the auditbackends API
-// +k8s:openapi-gen=true
 type AuditBackend struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
@@ -260,7 +259,6 @@ type AuditClassStatus struct {
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 
 // AuditClass is the Schema for the auditclasses API
-// +k8s:openapi-gen=true
 type AuditClass struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
