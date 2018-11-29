@@ -32,7 +32,7 @@ import (
 // AuditClassesGetter has a method to return a AuditClassInterface.
 // A group's client should implement this interface.
 type AuditClassesGetter interface {
-	AuditClasses(namespace string) AuditClassInterface
+	AuditClasses() AuditClassInterface
 }
 
 // AuditClassInterface has methods to work with AuditClass resources.
@@ -52,14 +52,12 @@ type AuditClassInterface interface {
 // auditClasses implements AuditClassInterface
 type auditClasses struct {
 	client rest.Interface
-	ns     string
 }
 
 // newAuditClasses returns a AuditClasses
-func newAuditClasses(c *AuditV1alpha1Client, namespace string) *auditClasses {
+func newAuditClasses(c *AuditV1alpha1Client) *auditClasses {
 	return &auditClasses{
 		client: c.RESTClient(),
-		ns:     namespace,
 	}
 }
 
@@ -67,7 +65,6 @@ func newAuditClasses(c *AuditV1alpha1Client, namespace string) *auditClasses {
 func (c *auditClasses) Get(name string, options v1.GetOptions) (result *v1alpha1.AuditClass, err error) {
 	result = &v1alpha1.AuditClass{}
 	err = c.client.Get().
-		Namespace(c.ns).
 		Resource("auditclasses").
 		Name(name).
 		VersionedParams(&options, scheme.ParameterCodec).
@@ -84,7 +81,6 @@ func (c *auditClasses) List(opts v1.ListOptions) (result *v1alpha1.AuditClassLis
 	}
 	result = &v1alpha1.AuditClassList{}
 	err = c.client.Get().
-		Namespace(c.ns).
 		Resource("auditclasses").
 		VersionedParams(&opts, scheme.ParameterCodec).
 		Timeout(timeout).
@@ -101,7 +97,6 @@ func (c *auditClasses) Watch(opts v1.ListOptions) (watch.Interface, error) {
 	}
 	opts.Watch = true
 	return c.client.Get().
-		Namespace(c.ns).
 		Resource("auditclasses").
 		VersionedParams(&opts, scheme.ParameterCodec).
 		Timeout(timeout).
@@ -112,7 +107,6 @@ func (c *auditClasses) Watch(opts v1.ListOptions) (watch.Interface, error) {
 func (c *auditClasses) Create(auditClass *v1alpha1.AuditClass) (result *v1alpha1.AuditClass, err error) {
 	result = &v1alpha1.AuditClass{}
 	err = c.client.Post().
-		Namespace(c.ns).
 		Resource("auditclasses").
 		Body(auditClass).
 		Do().
@@ -124,7 +118,6 @@ func (c *auditClasses) Create(auditClass *v1alpha1.AuditClass) (result *v1alpha1
 func (c *auditClasses) Update(auditClass *v1alpha1.AuditClass) (result *v1alpha1.AuditClass, err error) {
 	result = &v1alpha1.AuditClass{}
 	err = c.client.Put().
-		Namespace(c.ns).
 		Resource("auditclasses").
 		Name(auditClass.Name).
 		Body(auditClass).
@@ -139,7 +132,6 @@ func (c *auditClasses) Update(auditClass *v1alpha1.AuditClass) (result *v1alpha1
 func (c *auditClasses) UpdateStatus(auditClass *v1alpha1.AuditClass) (result *v1alpha1.AuditClass, err error) {
 	result = &v1alpha1.AuditClass{}
 	err = c.client.Put().
-		Namespace(c.ns).
 		Resource("auditclasses").
 		Name(auditClass.Name).
 		SubResource("status").
@@ -152,7 +144,6 @@ func (c *auditClasses) UpdateStatus(auditClass *v1alpha1.AuditClass) (result *v1
 // Delete takes name of the auditClass and deletes it. Returns an error if one occurs.
 func (c *auditClasses) Delete(name string, options *v1.DeleteOptions) error {
 	return c.client.Delete().
-		Namespace(c.ns).
 		Resource("auditclasses").
 		Name(name).
 		Body(options).
@@ -167,7 +158,6 @@ func (c *auditClasses) DeleteCollection(options *v1.DeleteOptions, listOptions v
 		timeout = time.Duration(*listOptions.TimeoutSeconds) * time.Second
 	}
 	return c.client.Delete().
-		Namespace(c.ns).
 		Resource("auditclasses").
 		VersionedParams(&listOptions, scheme.ParameterCodec).
 		Timeout(timeout).
@@ -180,7 +170,6 @@ func (c *auditClasses) DeleteCollection(options *v1.DeleteOptions, listOptions v
 func (c *auditClasses) Patch(name string, pt types.PatchType, data []byte, subresources ...string) (result *v1alpha1.AuditClass, err error) {
 	result = &v1alpha1.AuditClass{}
 	err = c.client.Patch(pt).
-		Namespace(c.ns).
 		Resource("auditclasses").
 		SubResource(subresources...).
 		Name(name).

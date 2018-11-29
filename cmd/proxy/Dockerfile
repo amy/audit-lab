@@ -13,5 +13,5 @@
 # limitations under the License.
 
 FROM scratch
-COPY audit-proxy /
-ENTRYPOINT ["/audit-proxy"]
+COPY proxy /
+ENTRYPOINT ["/proxy"]
