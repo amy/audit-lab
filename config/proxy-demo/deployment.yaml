@@ -1,0 +1,21 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: audit-proxy
+  labels:
+    app: aunem/audit-proxy
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: audit-proxy
+  template:
+    metadata:
+      labels:
+        app: audit-proxy
+    spec:
+      containers:
+      - name: audit-proxy
+        image: aunem/audit-proxy:latest
+        ports:
+        - containerPort: 8080
