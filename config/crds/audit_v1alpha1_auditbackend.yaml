@@ -1,0 +1,101 @@
+apiVersion: apiextensions.k8s.io/v1beta1
+kind: CustomResourceDefinition
+metadata:
+  creationTimestamp: null
+  labels:
+    controller-tools.k8s.io: "1.0"
+  name: auditbackends.audit.aunem.io
+spec:
+  group: audit.aunem.io
+  names:
+    kind: AuditBackend
+    plural: auditbackends
+  scope: Namespaced
+  validation:
+    openAPIV3Schema:
+      properties:
+        apiVersion:
+          type: string
+        kind:
+          type: string
+        metadata:
+          type: object
+        spec:
+          properties:
+            policy:
+              properties:
+                classRules:
+                  items:
+                    properties:
+                      level:
+                        type: string
+                      name:
+                        type: string
+                      stages:
+                        items:
+                          type: string
+                        type: array
+                    required:
+                    - name
+                    - level
+                    - stages
+                    type: object
+                  type: array
+                level:
+                  type: string
+                stages:
+                  items:
+                    type: string
+                  type: array
+              required:
+              - level
+              - stages
+              - classRules
+              type: object
+            webhook:
+              properties:
+                clientConfig:
+                  properties:
+                    caBundle:
+                      format: byte
+                      type: string
+                    service:
+                      properties:
+                        name:
+                          type: string
+                        namespace:
+                          type: string
+                        path:
+                          type: string
+                      required:
+                      - namespace
+                      - name
+                      type: object
+                    url:
+                      type: string
+                  type: object
+                throttle:
+                  properties:
+                    burst:
+                      format: int64
+                      type: integer
+                    qps:
+                      format: int64
+                      type: integer
+                  type: object
+              required:
+              - clientConfig
+              type: object
+          required:
+          - policy
+          - webhook
+          type: object
+        status:
+          type: object
+  version: v1alpha1
+status:
+  acceptedNames:
+    kind: ""
+    plural: ""
+  conditions: []
+  storedVersions: []

@@ -1,0 +1,9 @@
+apiVersion: audit.aunem.io/v1alpha1
+kind: AuditBackend
+metadata:
+  labels:
+    controller-tools.k8s.io: "1.0"
+  name: auditbackend-sample
+spec:
+  # Add fields here
+  foo: bar
