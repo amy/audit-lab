@@ -43,10 +43,10 @@ func New(f internalinterfaces.SharedInformerFactory, namespace string, tweakList
 
 // AuditBackends returns a AuditBackendInformer.
 func (v *version) AuditBackends() AuditBackendInformer {
-	return &auditBackendInformer{factory: v.factory, tweakListOptions: v.tweakListOptions}
+	return &auditBackendInformer{factory: v.factory, namespace: v.namespace, tweakListOptions: v.tweakListOptions}
 }
 
 // AuditClasses returns a AuditClassInformer.
 func (v *version) AuditClasses() AuditClassInformer {
-	return &auditClassInformer{factory: v.factory, tweakListOptions: v.tweakListOptions}
+	return &auditClassInformer{factory: v.factory, namespace: v.namespace, tweakListOptions: v.tweakListOptions}
 }

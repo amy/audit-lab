@@ -22,6 +22,14 @@ package v1alpha1
 // AuditBackendLister.
 type AuditBackendListerExpansion interface{}
 
+// AuditBackendNamespaceListerExpansion allows custom methods to be added to
+// AuditBackendNamespaceLister.
+type AuditBackendNamespaceListerExpansion interface{}
+
 // AuditClassListerExpansion allows custom methods to be added to
 // AuditClassLister.
 type AuditClassListerExpansion interface{}
+
+// AuditClassNamespaceListerExpansion allows custom methods to be added to
+// AuditClassNamespaceLister.
+type AuditClassNamespaceListerExpansion interface{}

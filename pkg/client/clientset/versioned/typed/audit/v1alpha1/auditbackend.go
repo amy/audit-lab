@@ -32,7 +32,7 @@ import (
 // AuditBackendsGetter has a method to return a AuditBackendInterface.
 // A group's client should implement this interface.
 type AuditBackendsGetter interface {
-	AuditBackends() AuditBackendInterface
+	AuditBackends(namespace string) AuditBackendInterface
 }
 
 // AuditBackendInterface has methods to work with AuditBackend resources.
@@ -52,12 +52,14 @@ type AuditBackendInterface interface {
 // auditBackends implements AuditBackendInterface
 type auditBackends struct {
 	client rest.Interface
+	ns     string
 }
 
 // newAuditBackends returns a AuditBackends
-func newAuditBackends(c *AuditV1alpha1Client) *auditBackends {
+func newAuditBackends(c *AuditV1alpha1Client, namespace string) *auditBackends {
 	return &auditBackends{
 		client: c.RESTClient(),
+		ns:     namespace,
 	}
 }
 
@@ -65,6 +67,7 @@ func newAuditBackends(c *AuditV1alpha1Client) *auditBackends {
 func (c *auditBackends) Get(name string, options v1.GetOptions) (result *v1alpha1.AuditBackend, err error) {
 	result = &v1alpha1.AuditBackend{}
 	err = c.client.Get().
+		Namespace(c.ns).
 		Resource("auditbackends").
 		Name(name).
 		VersionedParams(&options, scheme.ParameterCodec).
@@ -81,6 +84,7 @@ func (c *auditBackends) List(opts v1.ListOptions) (result *v1alpha1.AuditBackend
 	}
 	result = &v1alpha1.AuditBackendList{}
 	err = c.client.Get().
+		Namespace(c.ns).
 		Resource("auditbackends").
 		VersionedParams(&opts, scheme.ParameterCodec).
 		Timeout(timeout).
@@ -97,6 +101,7 @@ func (c *auditBackends) Watch(opts v1.ListOptions) (watch.Interface, error) {
 	}
 	opts.Watch = true
 	return c.client.Get().
+		Namespace(c.ns).
 		Resource("auditbackends").
 		VersionedParams(&opts, scheme.ParameterCodec).
 		Timeout(timeout).
@@ -107,6 +112,7 @@ func (c *auditBackends) Watch(opts v1.ListOptions) (watch.Interface, error) {
 func (c *auditBackends) Create(auditBackend *v1alpha1.AuditBackend) (result *v1alpha1.AuditBackend, err error) {
 	result = &v1alpha1.AuditBackend{}
 	err = c.client.Post().
+		Namespace(c.ns).
 		Resource("auditbackends").
 		Body(auditBackend).
 		Do().
@@ -118,6 +124,7 @@ func (c *auditBackends) Create(auditBackend *v1alpha1.AuditBackend) (result *v1a
 func (c *auditBackends) Update(auditBackend *v1alpha1.AuditBackend) (result *v1alpha1.AuditBackend, err error) {
 	result = &v1alpha1.AuditBackend{}
 	err = c.client.Put().
+		Namespace(c.ns).
 		Resource("auditbackends").
 		Name(auditBackend.Name).
 		Body(auditBackend).
@@ -132,6 +139,7 @@ func (c *auditBackends) Update(auditBackend *v1alpha1.AuditBackend) (result *v1a
 func (c *auditBackends) UpdateStatus(auditBackend *v1alpha1.AuditBackend) (result *v1alpha1.AuditBackend, err error) {
 	result = &v1alpha1.AuditBackend{}
 	err = c.client.Put().
+		Namespace(c.ns).
 		Resource("auditbackends").
 		Name(auditBackend.Name).
 		SubResource("status").
@@ -144,6 +152,7 @@ func (c *auditBackends) UpdateStatus(auditBackend *v1alpha1.AuditBackend) (resul
 // Delete takes name of the auditBackend and deletes it. Returns an error if one occurs.
 func (c *auditBackends) Delete(name string, options *v1.DeleteOptions) error {
 	return c.client.Delete().
+		Namespace(c.ns).
 		Resource("auditbackends").
 		Name(name).
 		Body(options).
@@ -158,6 +167,7 @@ func (c *auditBackends) DeleteCollection(options *v1.DeleteOptions, listOptions 
 		timeout = time.Duration(*listOptions.TimeoutSeconds) * time.Second
 	}
 	return c.client.Delete().
+		Namespace(c.ns).
 		Resource("auditbackends").
 		VersionedParams(&listOptions, scheme.ParameterCodec).
 		Timeout(timeout).
@@ -170,6 +180,7 @@ func (c *auditBackends) DeleteCollection(options *v1.DeleteOptions, listOptions 
 func (c *auditBackends) Patch(name string, pt types.PatchType, data []byte, subresources ...string) (result *v1alpha1.AuditBackend, err error) {
 	result = &v1alpha1.AuditBackend{}
 	err = c.client.Patch(pt).
+		Namespace(c.ns).
 		Resource("auditbackends").
 		SubResource(subresources...).
 		Name(name).

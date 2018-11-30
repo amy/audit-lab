@@ -31,6 +31,7 @@ import (
 // FakeAuditBackends implements AuditBackendInterface
 type FakeAuditBackends struct {
 	Fake *FakeAuditV1alpha1
+	ns   string
 }
 
 var auditbackendsResource = schema.GroupVersionResource{Group: "audit.aunem.io", Version: "v1alpha1", Resource: "auditbackends"}
@@ -40,7 +41,8 @@ var auditbackendsKind = schema.GroupVersionKind{Group: "audit.aunem.io", Version
 // Get takes name of the auditBackend, and returns the corresponding auditBackend object, and an error if there is any.
 func (c *FakeAuditBackends) Get(name string, options v1.GetOptions) (result *v1alpha1.AuditBackend, err error) {
 	obj, err := c.Fake.
-		Invokes(testing.NewRootGetAction(auditbackendsResource, name), &v1alpha1.AuditBackend{})
+		Invokes(testing.NewGetAction(auditbackendsResource, c.ns, name), &v1alpha1.AuditBackend{})
+
 	if obj == nil {
 		return nil, err
 	}
@@ -50,7 +52,8 @@ func (c *FakeAuditBackends) Get(name string, options v1.GetOptions) (result *v1a
 // List takes label and field selectors, and returns the list of AuditBackends that match those selectors.
 func (c *FakeAuditBackends) List(opts v1.ListOptions) (result *v1alpha1.AuditBackendList, err error) {
 	obj, err := c.Fake.
-		Invokes(testing.NewRootListAction(auditbackendsResource, auditbackendsKind, opts), &v1alpha1.AuditBackendList{})
+		Invokes(testing.NewListAction(auditbackendsResource, auditbackendsKind, c.ns, opts), &v1alpha1.AuditBackendList{})
+
 	if obj == nil {
 		return nil, err
 	}
@@ -71,13 +74,15 @@ func (c *FakeAuditBackends) List(opts v1.ListOptions) (result *v1alpha1.AuditBac
 // Watch returns a watch.Interface that watches the requested auditBackends.
 func (c *FakeAuditBackends) Watch(opts v1.ListOptions) (watch.Interface, error) {
 	return c.Fake.
-		InvokesWatch(testing.NewRootWatchAction(auditbackendsResource, opts))
+		InvokesWatch(testing.NewWatchAction(auditbackendsResource, c.ns, opts))
+
 }
 
 // Create takes the representation of a auditBackend and creates it.  Returns the server's representation of the auditBackend, and an error, if there is any.
 func (c *FakeAuditBackends) Create(auditBackend *v1alpha1.AuditBackend) (result *v1alpha1.AuditBackend, err error) {
 	obj, err := c.Fake.
-		Invokes(testing.NewRootCreateAction(auditbackendsResource, auditBackend), &v1alpha1.AuditBackend{})
+		Invokes(testing.NewCreateAction(auditbackendsResource, c.ns, auditBackend), &v1alpha1.AuditBackend{})
+
 	if obj == nil {
 		return nil, err
 	}
@@ -87,7 +92,8 @@ func (c *FakeAuditBackends) Create(auditBackend *v1alpha1.AuditBackend) (result 
 // Update takes the representation of a auditBackend and updates it. Returns the server's representation of the auditBackend, and an error, if there is any.
 func (c *FakeAuditBackends) Update(auditBackend *v1alpha1.AuditBackend) (result *v1alpha1.AuditBackend, err error) {
 	obj, err := c.Fake.
-		Invokes(testing.NewRootUpdateAction(auditbackendsResource, auditBackend), &v1alpha1.AuditBackend{})
+		Invokes(testing.NewUpdateAction(auditbackendsResource, c.ns, auditBackend), &v1alpha1.AuditBackend{})
+
 	if obj == nil {
 		return nil, err
 	}
@@ -98,7 +104,8 @@ func (c *FakeAuditBackends) Update(auditBackend *v1alpha1.AuditBackend) (result 
 // Add a +genclient:noStatus comment above the type to avoid generating UpdateStatus().
 func (c *FakeAuditBackends) UpdateStatus(auditBackend *v1alpha1.AuditBackend) (*v1alpha1.AuditBackend, error) {
 	obj, err := c.Fake.
-		Invokes(testing.NewRootUpdateSubresourceAction(auditbackendsResource, "status", auditBackend), &v1alpha1.AuditBackend{})
+		Invokes(testing.NewUpdateSubresourceAction(auditbackendsResource, "status", c.ns, auditBackend), &v1alpha1.AuditBackend{})
+
 	if obj == nil {
 		return nil, err
 	}
@@ -108,13 +115,14 @@ func (c *FakeAuditBackends) UpdateStatus(auditBackend *v1alpha1.AuditBackend) (*
 // Delete takes name of the auditBackend and deletes it. Returns an error if one occurs.
 func (c *FakeAuditBackends) Delete(name string, options *v1.DeleteOptions) error {
 	_, err := c.Fake.
-		Invokes(testing.NewRootDeleteAction(auditbackendsResource, name), &v1alpha1.AuditBackend{})
+		Invokes(testing.NewDeleteAction(auditbackendsResource, c.ns, name), &v1alpha1.AuditBackend{})
+
 	return err
 }
 
 // DeleteCollection deletes a collection of objects.
 func (c *FakeAuditBackends) DeleteCollection(options *v1.DeleteOptions, listOptions v1.ListOptions) error {
-	action := testing.NewRootDeleteCollectionAction(auditbackendsResource, listOptions)
+	action := testing.NewDeleteCollectionAction(auditbackendsResource, c.ns, listOptions)
 
 	_, err := c.Fake.Invokes(action, &v1alpha1.AuditBackendList{})
 	return err
@@ -123,7 +131,8 @@ func (c *FakeAuditBackends) DeleteCollection(options *v1.DeleteOptions, listOpti
 // Patch applies the patch and returns the patched auditBackend.
 func (c *FakeAuditBackends) Patch(name string, pt types.PatchType, data []byte, subresources ...string) (result *v1alpha1.AuditBackend, err error) {
 	obj, err := c.Fake.
-		Invokes(testing.NewRootPatchSubresourceAction(auditbackendsResource, name, pt, data, subresources...), &v1alpha1.AuditBackend{})
+		Invokes(testing.NewPatchSubresourceAction(auditbackendsResource, c.ns, name, pt, data, subresources...), &v1alpha1.AuditBackend{})
+
 	if obj == nil {
 		return nil, err
 	}

@@ -29,8 +29,8 @@ import (
 type AuditBackendLister interface {
 	// List lists all AuditBackends in the indexer.
 	List(selector labels.Selector) (ret []*v1alpha1.AuditBackend, err error)
-	// Get retrieves the AuditBackend from the index for a given name.
-	Get(name string) (*v1alpha1.AuditBackend, error)
+	// AuditBackends returns an object that can list and get AuditBackends.
+	AuditBackends(namespace string) AuditBackendNamespaceLister
 	AuditBackendListerExpansion
 }
 
@@ -52,9 +52,38 @@ func (s *auditBackendLister) List(selector labels.Selector) (ret []*v1alpha1.Aud
 	return ret, err
 }
 
-// Get retrieves the AuditBackend from the index for a given name.
-func (s *auditBackendLister) Get(name string) (*v1alpha1.AuditBackend, error) {
-	obj, exists, err := s.indexer.GetByKey(name)
+// AuditBackends returns an object that can list and get AuditBackends.
+func (s *auditBackendLister) AuditBackends(namespace string) AuditBackendNamespaceLister {
+	return auditBackendNamespaceLister{indexer: s.indexer, namespace: namespace}
+}
+
+// AuditBackendNamespaceLister helps list and get AuditBackends.
+type AuditBackendNamespaceLister interface {
+	// List lists all AuditBackends in the indexer for a given namespace.
+	List(selector labels.Selector) (ret []*v1alpha1.AuditBackend, err error)
+	// Get retrieves the AuditBackend from the indexer for a given namespace and name.
+	Get(name string) (*v1alpha1.AuditBackend, error)
+	AuditBackendNamespaceListerExpansion
+}
+
+// auditBackendNamespaceLister implements the AuditBackendNamespaceLister
+// interface.
+type auditBackendNamespaceLister struct {
+	indexer   cache.Indexer
+	namespace string
+}
+
+// List lists all AuditBackends in the indexer for a given namespace.
+func (s auditBackendNamespaceLister) List(selector labels.Selector) (ret []*v1alpha1.AuditBackend, err error) {
+	err = cache.ListAllByNamespace(s.indexer, s.namespace, selector, func(m interface{}) {
+		ret = append(ret, m.(*v1alpha1.AuditBackend))
+	})
+	return ret, err
+}
+
+// Get retrieves the AuditBackend from the indexer for a given namespace and name.
+func (s auditBackendNamespaceLister) Get(name string) (*v1alpha1.AuditBackend, error) {
+	obj, exists, err := s.indexer.GetByKey(s.namespace + "/" + name)
 	if err != nil {
 		return nil, err
 	}

@@ -72,7 +72,6 @@ type AuditBackendStatus struct {
 }
 
 // +genclient
-// +genclient:nonNamespaced
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 
 // AuditBackend is the Schema for the auditbackends API
@@ -257,7 +256,6 @@ type AuditClassStatus struct {
 }
 
 // +genclient
-// +genclient:nonNamespaced
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 
 // AuditClass is the Schema for the auditclasses API

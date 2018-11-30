@@ -29,8 +29,8 @@ import (
 type AuditClassLister interface {
 	// List lists all AuditClasses in the indexer.
 	List(selector labels.Selector) (ret []*v1alpha1.AuditClass, err error)
-	// Get retrieves the AuditClass from the index for a given name.
-	Get(name string) (*v1alpha1.AuditClass, error)
+	// AuditClasses returns an object that can list and get AuditClasses.
+	AuditClasses(namespace string) AuditClassNamespaceLister
 	AuditClassListerExpansion
 }
 
@@ -52,9 +52,38 @@ func (s *auditClassLister) List(selector labels.Selector) (ret []*v1alpha1.Audit
 	return ret, err
 }
 
-// Get retrieves the AuditClass from the index for a given name.
-func (s *auditClassLister) Get(name string) (*v1alpha1.AuditClass, error) {
-	obj, exists, err := s.indexer.GetByKey(name)
+// AuditClasses returns an object that can list and get AuditClasses.
+func (s *auditClassLister) AuditClasses(namespace string) AuditClassNamespaceLister {
+	return auditClassNamespaceLister{indexer: s.indexer, namespace: namespace}
+}
+
+// AuditClassNamespaceLister helps list and get AuditClasses.
+type AuditClassNamespaceLister interface {
+	// List lists all AuditClasses in the indexer for a given namespace.
+	List(selector labels.Selector) (ret []*v1alpha1.AuditClass, err error)
+	// Get retrieves the AuditClass from the indexer for a given namespace and name.
+	Get(name string) (*v1alpha1.AuditClass, error)
+	AuditClassNamespaceListerExpansion
+}
+
+// auditClassNamespaceLister implements the AuditClassNamespaceLister
+// interface.
+type auditClassNamespaceLister struct {
+	indexer   cache.Indexer
+	namespace string
+}
+
+// List lists all AuditClasses in the indexer for a given namespace.
+func (s auditClassNamespaceLister) List(selector labels.Selector) (ret []*v1alpha1.AuditClass, err error) {
+	err = cache.ListAllByNamespace(s.indexer, s.namespace, selector, func(m interface{}) {
+		ret = append(ret, m.(*v1alpha1.AuditClass))
+	})
+	return ret, err
+}
+
+// Get retrieves the AuditClass from the indexer for a given namespace and name.
+func (s auditClassNamespaceLister) Get(name string) (*v1alpha1.AuditClass, error) {
+	obj, exists, err := s.indexer.GetByKey(s.namespace + "/" + name)
 	if err != nil {
 		return nil, err
 	}

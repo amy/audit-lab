@@ -28,12 +28,12 @@ type FakeAuditV1alpha1 struct {
 	*testing.Fake
 }
 
-func (c *FakeAuditV1alpha1) AuditBackends() v1alpha1.AuditBackendInterface {
-	return &FakeAuditBackends{c}
+func (c *FakeAuditV1alpha1) AuditBackends(namespace string) v1alpha1.AuditBackendInterface {
+	return &FakeAuditBackends{c, namespace}
 }
 
-func (c *FakeAuditV1alpha1) AuditClasses() v1alpha1.AuditClassInterface {
-	return &FakeAuditClasses{c}
+func (c *FakeAuditV1alpha1) AuditClasses(namespace string) v1alpha1.AuditClassInterface {
+	return &FakeAuditClasses{c, namespace}
 }
 
 // RESTClient returns a RESTClient that is used to communicate
