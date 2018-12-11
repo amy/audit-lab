@@ -29,7 +29,3 @@ type AuditBackendNamespaceListerExpansion interface{}
 // AuditClassListerExpansion allows custom methods to be added to
 // AuditClassLister.
 type AuditClassListerExpansion interface{}
-
-// AuditClassNamespaceListerExpansion allows custom methods to be added to
-// AuditClassNamespaceLister.
-type AuditClassNamespaceListerExpansion interface{}

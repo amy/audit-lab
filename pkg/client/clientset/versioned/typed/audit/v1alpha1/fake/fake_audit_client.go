@@ -32,8 +32,8 @@ func (c *FakeAuditV1alpha1) AuditBackends(namespace string) v1alpha1.AuditBacken
 	return &FakeAuditBackends{c, namespace}
 }
 
-func (c *FakeAuditV1alpha1) AuditClasses(namespace string) v1alpha1.AuditClassInterface {
-	return &FakeAuditClasses{c, namespace}
+func (c *FakeAuditV1alpha1) AuditClasses() v1alpha1.AuditClassInterface {
+	return &FakeAuditClasses{c}
 }
 
 // RESTClient returns a RESTClient that is used to communicate

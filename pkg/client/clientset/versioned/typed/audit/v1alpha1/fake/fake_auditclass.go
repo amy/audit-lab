@@ -31,7 +31,6 @@ import (
 // FakeAuditClasses implements AuditClassInterface
 type FakeAuditClasses struct {
 	Fake *FakeAuditV1alpha1
-	ns   string
 }
 
 var auditclassesResource = schema.GroupVersionResource{Group: "audit.aunem.io", Version: "v1alpha1", Resource: "auditclasses"}
@@ -41,8 +40,7 @@ var auditclassesKind = schema.GroupVersionKind{Group: "audit.aunem.io", Version:
 // Get takes name of the auditClass, and returns the corresponding auditClass object, and an error if there is any.
 func (c *FakeAuditClasses) Get(name string, options v1.GetOptions) (result *v1alpha1.AuditClass, err error) {
 	obj, err := c.Fake.
-		Invokes(testing.NewGetAction(auditclassesResource, c.ns, name), &v1alpha1.AuditClass{})
-
+		Invokes(testing.NewRootGetAction(auditclassesResource, name), &v1alpha1.AuditClass{})
 	if obj == nil {
 		return nil, err
 	}
@@ -52,8 +50,7 @@ func (c *FakeAuditClasses) Get(name string, options v1.GetOptions) (result *v1al
 // List takes label and field selectors, and returns the list of AuditClasses that match those selectors.
 func (c *FakeAuditClasses) List(opts v1.ListOptions) (result *v1alpha1.AuditClassList, err error) {
 	obj, err := c.Fake.
-		Invokes(testing.NewListAction(auditclassesResource, auditclassesKind, c.ns, opts), &v1alpha1.AuditClassList{})
-
+		Invokes(testing.NewRootListAction(auditclassesResource, auditclassesKind, opts), &v1alpha1.AuditClassList{})
 	if obj == nil {
 		return nil, err
 	}
@@ -74,15 +71,13 @@ func (c *FakeAuditClasses) List(opts v1.ListOptions) (result *v1alpha1.AuditClas
 // Watch returns a watch.Interface that watches the requested auditClasses.
 func (c *FakeAuditClasses) Watch(opts v1.ListOptions) (watch.Interface, error) {
 	return c.Fake.
-		InvokesWatch(testing.NewWatchAction(auditclassesResource, c.ns, opts))
-
+		InvokesWatch(testing.NewRootWatchAction(auditclassesResource, opts))
 }
 
 // Create takes the representation of a auditClass and creates it.  Returns the server's representation of the auditClass, and an error, if there is any.
 func (c *FakeAuditClasses) Create(auditClass *v1alpha1.AuditClass) (result *v1alpha1.AuditClass, err error) {
 	obj, err := c.Fake.
-		Invokes(testing.NewCreateAction(auditclassesResource, c.ns, auditClass), &v1alpha1.AuditClass{})
-
+		Invokes(testing.NewRootCreateAction(auditclassesResource, auditClass), &v1alpha1.AuditClass{})
 	if obj == nil {
 		return nil, err
 	}
@@ -92,8 +87,7 @@ func (c *FakeAuditClasses) Create(auditClass *v1alpha1.AuditClass) (result *v1al
 // Update takes the representation of a auditClass and updates it. Returns the server's representation of the auditClass, and an error, if there is any.
 func (c *FakeAuditClasses) Update(auditClass *v1alpha1.AuditClass) (result *v1alpha1.AuditClass, err error) {
 	obj, err := c.Fake.
-		Invokes(testing.NewUpdateAction(auditclassesResource, c.ns, auditClass), &v1alpha1.AuditClass{})
-
+		Invokes(testing.NewRootUpdateAction(auditclassesResource, auditClass), &v1alpha1.AuditClass{})
 	if obj == nil {
 		return nil, err
 	}
@@ -104,8 +98,7 @@ func (c *FakeAuditClasses) Update(auditClass *v1alpha1.AuditClass) (result *v1al
 // Add a +genclient:noStatus comment above the type to avoid generating UpdateStatus().
 func (c *FakeAuditClasses) UpdateStatus(auditClass *v1alpha1.AuditClass) (*v1alpha1.AuditClass, error) {
 	obj, err := c.Fake.
-		Invokes(testing.NewUpdateSubresourceAction(auditclassesResource, "status", c.ns, auditClass), &v1alpha1.AuditClass{})
-
+		Invokes(testing.NewRootUpdateSubresourceAction(auditclassesResource, "status", auditClass), &v1alpha1.AuditClass{})
 	if obj == nil {
 		return nil, err
 	}
@@ -115,14 +108,13 @@ func (c *FakeAuditClasses) UpdateStatus(auditClass *v1alpha1.AuditClass) (*v1alp
 // Delete takes name of the auditClass and deletes it. Returns an error if one occurs.
 func (c *FakeAuditClasses) Delete(name string, options *v1.DeleteOptions) error {
 	_, err := c.Fake.
-		Invokes(testing.NewDeleteAction(auditclassesResource, c.ns, name), &v1alpha1.AuditClass{})
-
+		Invokes(testing.NewRootDeleteAction(auditclassesResource, name), &v1alpha1.AuditClass{})
 	return err
 }
 
 // DeleteCollection deletes a collection of objects.
 func (c *FakeAuditClasses) DeleteCollection(options *v1.DeleteOptions, listOptions v1.ListOptions) error {
-	action := testing.NewDeleteCollectionAction(auditclassesResource, c.ns, listOptions)
+	action := testing.NewRootDeleteCollectionAction(auditclassesResource, listOptions)
 
 	_, err := c.Fake.Invokes(action, &v1alpha1.AuditClassList{})
 	return err
@@ -131,8 +123,7 @@ func (c *FakeAuditClasses) DeleteCollection(options *v1.DeleteOptions, listOptio
 // Patch applies the patch and returns the patched auditClass.
 func (c *FakeAuditClasses) Patch(name string, pt types.PatchType, data []byte, subresources ...string) (result *v1alpha1.AuditClass, err error) {
 	obj, err := c.Fake.
-		Invokes(testing.NewPatchSubresourceAction(auditclassesResource, c.ns, name, pt, data, subresources...), &v1alpha1.AuditClass{})
-
+		Invokes(testing.NewRootPatchSubresourceAction(auditclassesResource, name, pt, data, subresources...), &v1alpha1.AuditClass{})
 	if obj == nil {
 		return nil, err
 	}

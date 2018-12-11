@@ -40,8 +40,8 @@ func (c *AuditV1alpha1Client) AuditBackends(namespace string) AuditBackendInterf
 	return newAuditBackends(c, namespace)
 }
 
-func (c *AuditV1alpha1Client) AuditClasses(namespace string) AuditClassInterface {
-	return newAuditClasses(c, namespace)
+func (c *AuditV1alpha1Client) AuditClasses() AuditClassInterface {
+	return newAuditClasses(c)
 }
 
 // NewForConfig creates a new AuditV1alpha1Client for the given config.

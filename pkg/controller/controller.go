@@ -21,18 +21,22 @@ import (
 	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
+	auditregv1alpha1 "k8s.io/api/auditregistration/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/apimachinery/pkg/util/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
 	appsinformers "k8s.io/client-go/informers/apps/v1"
+	auditreginformers "k8s.io/client-go/informers/auditregistration/v1alpha1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
 	typedcorev1 "k8s.io/client-go/kubernetes/typed/core/v1"
 	appslisters "k8s.io/client-go/listers/apps/v1"
+	auditreglisters "k8s.io/client-go/listers/auditregistration/v1alpha1"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/workqueue"
@@ -45,7 +49,7 @@ import (
 	listers "github.com/pbarker/audit-lab/pkg/client/listers/audit/v1alpha1"
 )
 
-const controllerAgentName = "sample-controller"
+const controllerAgentName = "audit-backend-controller"
 
 const (
 	// SuccessSynced is used as part of the Event 'reason' when a Backend is synced
@@ -71,20 +75,23 @@ type Controller struct {
 
 	deploymentsLister appslisters.DeploymentLister
 	deploymentsSynced cache.InformerSynced
-	auditClassLister  listers.AuditClassLister
-	auditClassSynced  cache.InformerSynced
+
+	auditSinkLister auditreglisters.AuditSinkLister
+	auditSinkSynced cache.InformerSynced
 
 	auditBackendLister listers.AuditBackendLister
 	auditBackendSynced cache.InformerSynced
+
+	auditClassLister listers.AuditClassLister
+	auditClassSynced cache.InformerSynced
 
 	// workqueue is a rate limited work queue. This is used to queue work to be
 	// processed instead of performing it as soon as a change happens. This
 	// means we can ensure we only process a fixed amount of resources at a
 	// time, and makes it easy to ensure we are never processing the same item
 	// simultaneously in two different workers.
-	backendWorkqueue workqueue.RateLimitingInterface
+	workqueue workqueue.RateLimitingInterface
 
-	classWorkqueue workqueue.RateLimitingInterface
 	// recorder is an event recorder for recording Event resources to the
 	// Kubernetes API.
 	recorder record.EventRecorder
@@ -95,8 +102,10 @@ func NewController(
 	kubeclientset kubernetes.Interface,
 	auditcrdclientset clientset.Interface,
 	deploymentInformer appsinformers.DeploymentInformer,
+	auditSinkInformer auditreginformers.AuditSinkInformer,
 	auditBackendInformer informers.AuditBackendInformer,
-	auditClassInformer informers.AuditClassInformer) *Controller {
+	auditClassInformer informers.AuditClassInformer,
+) *Controller {
 
 	// Create event broadcaster
 	// Add sample-controller types to the default Kubernetes Scheme so Events can be
@@ -113,30 +122,57 @@ func NewController(
 		auditcrdclientset:  auditcrdclientset,
 		deploymentsLister:  deploymentInformer.Lister(),
 		deploymentsSynced:  deploymentInformer.Informer().HasSynced,
+		auditSinkLister:    auditSinkInformer.Lister(),
+		auditSinkSynced:    auditSinkInformer.Informer().HasSynced,
 		auditBackendLister: auditBackendInformer.Lister(),
 		auditBackendSynced: auditBackendInformer.Informer().HasSynced,
 		auditClassLister:   auditClassInformer.Lister(),
 		auditClassSynced:   auditClassInformer.Informer().HasSynced,
-		backendWorkqueue:   workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "Backends"),
-		classWorkqueue:     workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "Classes"),
+		workqueue:          workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "Backends"),
 		recorder:           recorder,
 	}
 
 	klog.Info("Setting up event handlers")
+
+	// Set up an event handler for when Sink resources change
+	auditSinkInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc: controller.handleObject,
+		UpdateFunc: func(old, new interface{}) {
+			newDepl := new.(*appsv1.Deployment)
+			oldDepl := old.(*appsv1.Deployment)
+			if newDepl.ResourceVersion == oldDepl.ResourceVersion {
+				// Periodic resync will send update events for all known Deployments.
+				// Two different versions of the same Deployment will always have different RVs.
+				return
+			}
+			controller.handleObject(new)
+		},
+		DeleteFunc: controller.handleObject,
+	})
+
 	// Set up an event handler for when Backend resources change
 	auditBackendInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: controller.enqueueAuditBackend,
 		UpdateFunc: func(old, new interface{}) {
 			controller.enqueueAuditBackend(new)
 		},
+		DeleteFunc: controller.enqueueAuditBackend,
 	})
 
+	// Set up an event handler for when Class resources change
 	auditClassInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc: controller.enqueueAuditClass,
+		AddFunc: func(obj interface{}) {
+			controller.handleClassDelta(obj.(*auditcrdv1alpha1.AuditClass))
+		},
 		UpdateFunc: func(old, new interface{}) {
-			controller.enqueueAuditClass(new)
+			controller.handleClassDelta(new.(*auditcrdv1alpha1.AuditClass))
+		},
+		DeleteFunc: func(obj interface{}) {
+			// handle tombstones
+			controller.handleClassDelta(obj.(*auditcrdv1alpha1.AuditClass))
 		},
 	})
+
 	// Set up an event handler for when Deployment resources change. This
 	// handler will lookup the owner of the given Deployment, and if it is
 	// owned by a Backend resource will enqueue that Backend resource for
@@ -167,22 +203,21 @@ func NewController(
 // workers to finish processing their current work items.
 func (c *Controller) Run(threadiness int, stopCh <-chan struct{}) error {
 	defer runtime.HandleCrash()
-	defer c.backendWorkqueue.ShutDown()
-	defer c.classWorkqueue.ShutDown()
+	defer c.workqueue.ShutDown()
 
 	// Start the informer factories to begin populating the informer caches
 	klog.Info("Starting Backend controller")
 
 	// Wait for the caches to be synced before starting workers
 	klog.Info("Waiting for informer caches to sync")
-	if ok := cache.WaitForCacheSync(stopCh, c.deploymentsSynced, c.auditBackendSynced, c.auditClassSynced); !ok {
+	if ok := cache.WaitForCacheSync(stopCh, c.deploymentsSynced, c.auditBackendSynced); !ok {
 		return fmt.Errorf("failed to wait for caches to sync")
 	}
 
 	klog.Info("Starting workers")
 	// Launch two workers to process Backend resources
 	for i := 0; i < threadiness; i++ {
-		go wait.Until(c.runBackendWorker, time.Second, stopCh)
+		go wait.Until(c.runWorker, time.Second, stopCh)
 	}
 
 	klog.Info("Started workers")
@@ -192,18 +227,18 @@ func (c *Controller) Run(threadiness int, stopCh <-chan struct{}) error {
 	return nil
 }
 
-// runBackendWorker is a long-running function that will continually call the
+// runWorker is a long-running function that will continually call the
 // processNextWorkItem function in order to read and process a message on the
 // workqueue.
-func (c *Controller) runBackendWorker() {
-	for c.processNextBackendWorkItem() {
+func (c *Controller) runWorker() {
+	for c.processNextWorkItem() {
 	}
 }
 
-// processNextBackendWorkItem will read a single work item off the workqueue and
+// processNextWorkItem will read a single work item off the workqueue and
 // attempt to process it, by calling the syncHandler.
-func (c *Controller) processNextBackendWorkItem() bool {
-	obj, shutdown := c.backendWorkqueue.Get()
+func (c *Controller) processNextWorkItem() bool {
+	obj, shutdown := c.workqueue.Get()
 
 	if shutdown {
 		return false
@@ -217,7 +252,7 @@ func (c *Controller) processNextBackendWorkItem() bool {
 		// not call Forget if a transient error occurs, instead the item is
 		// put back on the workqueue and attempted again after a back-off
 		// period.
-		defer c.backendWorkqueue.Done(obj)
+		defer c.workqueue.Done(obj)
 		var key string
 		var ok bool
 		// We expect strings to come off the workqueue. These are of the
@@ -229,20 +264,20 @@ func (c *Controller) processNextBackendWorkItem() bool {
 			// As the item in the workqueue is actually invalid, we call
 			// Forget here else we'd go into a loop of attempting to
 			// process a work item that is invalid.
-			c.backendWorkqueue.Forget(obj)
+			c.workqueue.Forget(obj)
 			runtime.HandleError(fmt.Errorf("expected string in workqueue but got %#v", obj))
 			return nil
 		}
-		// Run the syncBackendHandler, passing it the namespace/name string of the
+		// Run the syncHandler, passing it the namespace/name string of the
 		// Backend resource to be synced.
-		if err := c.syncBackendHandler(key); err != nil {
+		if err := c.syncHandler(key); err != nil {
 			// Put the item back on the workqueue to handle any transient errors.
-			c.backendWorkqueue.AddRateLimited(key)
+			c.workqueue.AddRateLimited(key)
 			return fmt.Errorf("error syncing '%s': %s, requeuing", key, err.Error())
 		}
 		// Finally, if no error occurs we Forget this item so it does not
 		// get queued again until another change happens.
-		c.backendWorkqueue.Forget(obj)
+		c.workqueue.Forget(obj)
 		klog.Infof("Successfully synced '%s'", key)
 		return nil
 	}(obj)
@@ -255,10 +290,38 @@ func (c *Controller) processNextBackendWorkItem() bool {
 	return true
 }
 
-// syncBackendHandler compares the actual state with the desired, and attempts to
+func (c *Controller) handleClassDelta(class *auditcrdv1alpha1.AuditClass) {
+	// list all backends
+	backends, err := c.auditBackendLister.AuditBackends(metav1.NamespaceAll).List(nil)
+	if err != nil {
+		runtime.HandleError(err)
+	}
+	// see which ones have the class
+	for _, backend := range backends {
+		if hasClass(backend, class) {
+			// trigger backend update
+			backend.Labels["classdelta"] = string(time.Now().Unix())
+			_, err := c.auditcrdclientset.AuditV1alpha1().AuditBackends(backend.Namespace).Update(backend)
+			if err != nil {
+				runtime.HandleError(err)
+			}
+		}
+	}
+}
+
+func hasClass(backend *auditcrdv1alpha1.AuditBackend, class *auditcrdv1alpha1.AuditClass) bool {
+	for _, classRule := range backend.Spec.Policy.ClassRules {
+		if classRule.Name == class.Name {
+			return true
+		}
+	}
+	return false
+}
+
+// syncHandler compares the actual state with the desired, and attempts to
 // converge the two. It then updates the Status block of the Backend resource
 // with the current status of the resource.
-func (c *Controller) syncBackendHandler(key string) error {
+func (c *Controller) syncHandler(key string) error {
 	// Convert the namespace/name string into a distinct namespace and name
 	namespace, name, err := cache.SplitMetaNamespaceKey(key)
 	if err != nil {
@@ -269,14 +332,50 @@ func (c *Controller) syncBackendHandler(key string) error {
 	// Get the Backend resource with this namespace/name
 	backend, err := c.auditBackendLister.AuditBackends(namespace).Get(name)
 	if err != nil {
-		// The Backend resource may no longer exist, in which case we stop
-		// processing.
+		// If the backend no longer exists, then ensure the deployment has been deleted
 		if errors.IsNotFound(err) {
-			runtime.HandleError(fmt.Errorf("Backend '%s' in work queue no longer exists", key))
-			return nil
+			// Get the deployment with the name specified in Backend.spec
+			deployment, err := c.deploymentsLister.Deployments(backend.Namespace).Get(backend.Name)
+			// if the error is something other than not found, handle it
+			if !errors.IsNotFound(err) && err != nil {
+				return err
+			}
+			// if the deployment is not nil, delete it
+			if deployment != nil {
+				err := c.kubeclientset.AppsV1().Deployments(backend.Namespace).Delete(backend.Name, nil)
+				if err != nil {
+					return err
+				}
+			}
+			// Get the sink with the name specified in Backend.spec
+			sink, err := c.auditSinkLister.Get(backend.Name)
+			// if the error is something other than not found, handle it
+			if !errors.IsNotFound(err) && err != nil {
+				return err
+			}
+			// if the sink is not nil, delete it
+			if sink != nil {
+				err := c.kubeclientset.AuditregistrationV1alpha1().AuditSinks().Delete(backend.Name, nil)
+				if err != nil {
+					return err
+				}
+			}
 		}
 
 		return err
+	}
+
+	classes, err := c.auditClassLister.List(nil)
+	if err != nil {
+		return err
+	}
+
+	// check that classes exist for backend
+	for _, classRule := range backend.Spec.Policy.ClassRules {
+		if !containsClass(classes, classRule.Name) {
+			c.recorder.Event(backend, corev1.EventTypeWarning, "invalid-class", fmt.Sprintf("class %q does not exist", classRule.Name))
+		}
+		return nil
 	}
 
 	// Get the deployment with the name specified in Backend.spec
@@ -285,7 +384,6 @@ func (c *Controller) syncBackendHandler(key string) error {
 	if errors.IsNotFound(err) {
 		deployment, err = c.kubeclientset.AppsV1().Deployments(backend.Namespace).Create(newDeployment(backend))
 	}
-
 	// If an error occurs during Get/Create, we'll requeue the item so we can
 	// attempt processing again later. This could have been caused by a
 	// temporary network failure, or any other transient reason.
@@ -293,19 +391,45 @@ func (c *Controller) syncBackendHandler(key string) error {
 		return err
 	}
 
-	// If the Deployment is not controlled by this Backend resource, we should log
-	// a warning to the event recorder and ret
-	if !metav1.IsControlledBy(deployment, backend) {
-		msg := fmt.Sprintf(MessageResourceExists, deployment.Name)
-		c.recorder.Event(backend, corev1.EventTypeWarning, ErrResourceExists, msg)
-		return fmt.Errorf(msg)
+	// Get the sink with the name specified in Backend.spec
+	sink, err := c.auditSinkLister.Get(backend.Name)
+	// If the resource doesn't exist, we'll create it
+	if errors.IsNotFound(err) {
+		sink, err = c.newAuditSink(backend)
+		if err != nil {
+			return err
+		}
+		_, err = c.kubeclientset.AuditregistrationV1alpha1().AuditSinks().Create(sink)
+		if err != nil {
+			return err
+		}
+	}
+	if err != nil {
+		return err
 	}
 
-	// handle update
+	// If the Deployment is not controlled by this Backend resource, update the deployment
+	if !metav1.IsControlledBy(deployment, backend) {
+		deployment, err = c.kubeclientset.AppsV1().Deployments(backend.Namespace).Update(newDeployment(backend))
+		if err != nil {
+			return err
+		}
+	}
+	// If the sink is not controlled by this Backend resource, update the deployment
+	if !metav1.IsControlledBy(sink, backend) {
+		sink, err = c.newAuditSink(backend)
+		if err != nil {
+			return err
+		}
+		sink, err = c.kubeclientset.AuditregistrationV1alpha1().AuditSinks().Update(sink)
+		if err != nil {
+			return err
+		}
+	}
 
 	// Finally, we update the status block of the Backend resource to reflect the
 	// current state of the world
-	err = c.updateBackendStatus(backend, deployment)
+	err = c.updateStatus(backend, deployment)
 	if err != nil {
 		return err
 	}
@@ -314,7 +438,16 @@ func (c *Controller) syncBackendHandler(key string) error {
 	return nil
 }
 
-func (c *Controller) updateBackendStatus(backend *auditcrdv1alpha1.AuditBackend, deployment *appsv1.Deployment) error {
+func containsClass(classes []*auditcrdv1alpha1.AuditClass, className string) bool {
+	for _, class := range classes {
+		if class.Name == className {
+			return true
+		}
+	}
+	return false
+}
+
+func (c *Controller) updateStatus(backend *auditcrdv1alpha1.AuditBackend, deployment *appsv1.Deployment) error {
 	// NEVER modify objects from the store. It's a read-only, local cache.
 	// You can use DeepCopy() to make a deep copy of original object and modify this copy
 	// Or create a copy manually for better performance
@@ -338,17 +471,7 @@ func (c *Controller) enqueueAuditBackend(obj interface{}) {
 		runtime.HandleError(err)
 		return
 	}
-	c.backendWorkqueue.AddRateLimited(key)
-}
-
-func (c *Controller) enqueueAuditClass(obj interface{}) {
-	var key string
-	var err error
-	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
-		runtime.HandleError(err)
-		return
-	}
-	c.classWorkqueue.AddRateLimited(key)
+	c.workqueue.AddRateLimited(key)
 }
 
 // handleObject will take any resource implementing metav1.Object and attempt
@@ -391,6 +514,76 @@ func (c *Controller) handleObject(obj interface{}) {
 	}
 }
 
+func (c *Controller) newAuditSink(backend *auditcrdv1alpha1.AuditBackend) (*auditregv1alpha1.AuditSink, error) {
+	// export CA_BUNDLE=$(kubectl get configmap -n kube-system extension-apiserver-authentication -o=jsonpath='{.data.client-ca-file}' | base64 | tr -d '\n')
+
+	// needd to grab the CABundle stored in kube-system -- could this be retrieved earlier
+	cm, err := c.kubeclientset.CoreV1().ConfigMaps("kube-system").Get("extension-apiserver-authentication", metav1.GetOptions{})
+	if err != nil {
+		return nil, err
+	}
+	cafile := cm.Data["client-ca-file"]
+	return &auditregv1alpha1.AuditSink{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: backend.Name,
+			OwnerReferences: []metav1.OwnerReference{
+				*metav1.NewControllerRef(backend, schema.GroupVersionKind{
+					Group:   auditcrdv1alpha1.SchemeGroupVersion.Group,
+					Version: auditcrdv1alpha1.SchemeGroupVersion.Version,
+					Kind:    "AuditBackend",
+				}),
+			},
+		},
+		Spec: auditregv1alpha1.AuditSinkSpec{
+			Policy: auditregv1alpha1.Policy{
+				Level: auditregv1alpha1.LevelRequestResponse,
+				Stages: []auditregv1alpha1.Stage{
+					auditregv1alpha1.StageRequestReceived,
+					auditregv1alpha1.StageResponseStarted,
+					auditregv1alpha1.StageResponseComplete,
+					auditregv1alpha1.StagePanic,
+				},
+			},
+			Webhook: auditregv1alpha1.Webhook{
+				ClientConfig: auditregv1alpha1.WebhookClientConfig{
+					Service: &auditregv1alpha1.ServiceReference{
+						Name:      backend.Name,
+						Namespace: backend.Namespace,
+					},
+					CABundle: []byte(cafile),
+				},
+			},
+		},
+	}, nil
+}
+
+func newService(backend *auditcrdv1alpha1.AuditBackend) *corev1.Service {
+	return &corev1.Service{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      backend.Name,
+			Namespace: backend.Namespace,
+			OwnerReferences: []metav1.OwnerReference{
+				*metav1.NewControllerRef(backend, schema.GroupVersionKind{
+					Group:   auditcrdv1alpha1.SchemeGroupVersion.Group,
+					Version: auditcrdv1alpha1.SchemeGroupVersion.Version,
+					Kind:    "AuditBackend",
+				}),
+			},
+		},
+		Spec: corev1.ServiceSpec{
+			Selector: map[string]string{
+				"app": "audit-proxy",
+			},
+			Ports: []corev1.ServicePort{
+				{
+					Port:       int32(443),
+					TargetPort: intstr.IntOrString{IntVal: 443},
+				},
+			},
+		},
+	}
+}
+
 // newDeployment creates a new Deployment for a Backend resource. It also sets
 // the appropriate OwnerReferences on the resource so handleObject can discover
 // the Backend resource that 'owns' it.
@@ -422,10 +615,18 @@ func newDeployment(backend *auditcrdv1alpha1.AuditBackend) *appsv1.Deployment {
 					Labels: labels,
 				},
 				Spec: corev1.PodSpec{
+					InitContainers: []corev1.Container{
+						{
+							Name:    "audit-proxy-init",
+							Image:   "aunem/audit-proxy-init:latest",
+							Command: []string{"/webhook-create-cert.sh"},
+							Args:    []string{fmt.Sprintf("--service=%s", backend.Name), fmt.Sprintf("--secret=%s", backend.Name), fmt.Sprintf("--namespace=%s", backend.Namespace)},
+						},
+					},
 					Containers: []corev1.Container{
 						{
-							Name:  "nginx",
-							Image: "nginx:latest",
+							Name:  "audit-proxy",
+							Image: "aunem/audit-proxy:latest",
 						},
 					},
 				},

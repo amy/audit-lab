@@ -48,5 +48,5 @@ func (v *version) AuditBackends() AuditBackendInformer {
 
 // AuditClasses returns a AuditClassInformer.
 func (v *version) AuditClasses() AuditClassInformer {
-	return &auditClassInformer{factory: v.factory, namespace: v.namespace, tweakListOptions: v.tweakListOptions}
+	return &auditClassInformer{factory: v.factory, tweakListOptions: v.tweakListOptions}
 }
