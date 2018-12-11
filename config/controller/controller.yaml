@@ -1,0 +1,27 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  labels:
+    controller-tools.k8s.io: "1.0"
+  name: audit
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: audit-controller
+  namespace: audit
+  labels:
+    app: audit-controller
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: audit-controller
+  template:
+    metadata:
+      labels:
+        app: audit-controller
+    spec:
+      containers:
+      - name: audit-controller
+        image: aunem/audit-controller:latest

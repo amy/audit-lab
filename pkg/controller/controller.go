@@ -32,11 +32,13 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	appsinformers "k8s.io/client-go/informers/apps/v1"
 	auditreginformers "k8s.io/client-go/informers/auditregistration/v1alpha1"
+	coreinformers "k8s.io/client-go/informers/core/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
 	typedcorev1 "k8s.io/client-go/kubernetes/typed/core/v1"
 	appslisters "k8s.io/client-go/listers/apps/v1"
 	auditreglisters "k8s.io/client-go/listers/auditregistration/v1alpha1"
+	corelisters "k8s.io/client-go/listers/core/v1"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/workqueue"
@@ -76,6 +78,9 @@ type Controller struct {
 	deploymentsLister appslisters.DeploymentLister
 	deploymentsSynced cache.InformerSynced
 
+	serviceLister corelisters.ServiceLister
+	serviceSynced cache.InformerSynced
+
 	auditSinkLister auditreglisters.AuditSinkLister
 	auditSinkSynced cache.InformerSynced
 
@@ -102,6 +107,7 @@ func NewController(
 	kubeclientset kubernetes.Interface,
 	auditcrdclientset clientset.Interface,
 	deploymentInformer appsinformers.DeploymentInformer,
+	serviceInformer coreinformers.ServiceInformer,
 	auditSinkInformer auditreginformers.AuditSinkInformer,
 	auditBackendInformer informers.AuditBackendInformer,
 	auditClassInformer informers.AuditClassInformer,
@@ -122,6 +128,8 @@ func NewController(
 		auditcrdclientset:  auditcrdclientset,
 		deploymentsLister:  deploymentInformer.Lister(),
 		deploymentsSynced:  deploymentInformer.Informer().HasSynced,
+		serviceLister:      serviceInformer.Lister(),
+		serviceSynced:      serviceInformer.Informer().HasSynced,
 		auditSinkLister:    auditSinkInformer.Lister(),
 		auditSinkSynced:    auditSinkInformer.Informer().HasSynced,
 		auditBackendLister: auditBackendInformer.Lister(),
@@ -138,9 +146,9 @@ func NewController(
 	auditSinkInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: controller.handleObject,
 		UpdateFunc: func(old, new interface{}) {
-			newDepl := new.(*appsv1.Deployment)
-			oldDepl := old.(*appsv1.Deployment)
-			if newDepl.ResourceVersion == oldDepl.ResourceVersion {
+			newSink := new.(*auditregv1alpha1.AuditSink)
+			oldSink := old.(*auditregv1alpha1.AuditSink)
+			if newSink.ResourceVersion == oldSink.ResourceVersion {
 				// Periodic resync will send update events for all known Deployments.
 				// Two different versions of the same Deployment will always have different RVs.
 				return
@@ -185,6 +193,21 @@ func NewController(
 			newDepl := new.(*appsv1.Deployment)
 			oldDepl := old.(*appsv1.Deployment)
 			if newDepl.ResourceVersion == oldDepl.ResourceVersion {
+				// Periodic resync will send update events for all known Deployments.
+				// Two different versions of the same Deployment will always have different RVs.
+				return
+			}
+			controller.handleObject(new)
+		},
+		DeleteFunc: controller.handleObject,
+	})
+
+	serviceInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc: controller.handleObject,
+		UpdateFunc: func(old, new interface{}) {
+			newService := new.(*corev1.Service)
+			oldService := old.(*corev1.Service)
+			if newService.ResourceVersion == oldService.ResourceVersion {
 				// Periodic resync will send update events for all known Deployments.
 				// Two different versions of the same Deployment will always have different RVs.
 				return
@@ -300,11 +323,12 @@ func (c *Controller) handleClassDelta(class *auditcrdv1alpha1.AuditClass) {
 	for _, backend := range backends {
 		if hasClass(backend, class) {
 			// trigger backend update
-			backend.Labels["classdelta"] = string(time.Now().Unix())
-			_, err := c.auditcrdclientset.AuditV1alpha1().AuditBackends(backend.Namespace).Update(backend)
-			if err != nil {
-				runtime.HandleError(err)
-			}
+			// backend.Labels["classdelta"] = string(time.Now().Unix())
+			// _, err := c.auditcrdclientset.AuditV1alpha1().AuditBackends(backend.Namespace).Update(backend)
+			// if err != nil {
+			// 	runtime.HandleError(err)
+			// }
+			c.enqueueAuditBackend(backend)
 		}
 	}
 }
@@ -343,6 +367,19 @@ func (c *Controller) syncHandler(key string) error {
 			// if the deployment is not nil, delete it
 			if deployment != nil {
 				err := c.kubeclientset.AppsV1().Deployments(backend.Namespace).Delete(backend.Name, nil)
+				if err != nil {
+					return err
+				}
+			}
+			// Get the service with the name specified in Backend.spec
+			service, err := c.serviceLister.Services(backend.Namespace).Get(backend.Name)
+			// if the error is something other than not found, handle it
+			if !errors.IsNotFound(err) && err != nil {
+				return err
+			}
+			// if the service is not nil, delete it
+			if service != nil {
+				err := c.kubeclientset.CoreV1().Services(backend.Namespace).Delete(backend.Name, nil)
 				if err != nil {
 					return err
 				}
@@ -408,6 +445,20 @@ func (c *Controller) syncHandler(key string) error {
 		return err
 	}
 
+	// Get the service with the name specified in Backend.spec
+	service, err := c.serviceLister.Services(backend.Namespace).Get(backend.Name)
+	// If the resource doesn't exist, we'll create it
+	if errors.IsNotFound(err) {
+		service = newService(backend)
+		_, err = c.kubeclientset.CoreV1().Services(backend.Namespace).Create(service)
+		if err != nil {
+			return err
+		}
+	}
+	if err != nil {
+		return err
+	}
+
 	// If the Deployment is not controlled by this Backend resource, update the deployment
 	if !metav1.IsControlledBy(deployment, backend) {
 		deployment, err = c.kubeclientset.AppsV1().Deployments(backend.Namespace).Update(newDeployment(backend))
@@ -415,13 +466,20 @@ func (c *Controller) syncHandler(key string) error {
 			return err
 		}
 	}
-	// If the sink is not controlled by this Backend resource, update the deployment
+	// If the Sink is not controlled by this Backend resource, update the deployment
 	if !metav1.IsControlledBy(sink, backend) {
 		sink, err = c.newAuditSink(backend)
 		if err != nil {
 			return err
 		}
 		sink, err = c.kubeclientset.AuditregistrationV1alpha1().AuditSinks().Update(sink)
+		if err != nil {
+			return err
+		}
+	}
+	// If the Service is not controlled by this Backend resource, update the deployment
+	if !metav1.IsControlledBy(service, backend) {
+		service, err = c.kubeclientset.CoreV1().Services(backend.Namespace).Update(newService(backend))
 		if err != nil {
 			return err
 		}
@@ -517,7 +575,7 @@ func (c *Controller) handleObject(obj interface{}) {
 func (c *Controller) newAuditSink(backend *auditcrdv1alpha1.AuditBackend) (*auditregv1alpha1.AuditSink, error) {
 	// export CA_BUNDLE=$(kubectl get configmap -n kube-system extension-apiserver-authentication -o=jsonpath='{.data.client-ca-file}' | base64 | tr -d '\n')
 
-	// needd to grab the CABundle stored in kube-system -- could this be retrieved earlier
+	// needd to grab the CABundle stored in kube-system -- could this be retrieved earlier?
 	cm, err := c.kubeclientset.CoreV1().ConfigMaps("kube-system").Get("extension-apiserver-authentication", metav1.GetOptions{})
 	if err != nil {
 		return nil, err
@@ -572,7 +630,7 @@ func newService(backend *auditcrdv1alpha1.AuditBackend) *corev1.Service {
 		},
 		Spec: corev1.ServiceSpec{
 			Selector: map[string]string{
-				"app": "audit-proxy",
+				"controller": backend.Name,
 			},
 			Ports: []corev1.ServicePort{
 				{
