@@ -29,9 +29,33 @@ rules:
   - patch
   - delete
 - apiGroups:
+  - auditregistration.k8s.io
+  resources:
+  - auditsinks
+  verbs:
+  - get
+  - list
+  - watch
+  - create
+  - update
+  - patch
+  - delete
+- apiGroups:
   - audit.aunem.io
   resources:
   - auditclasses
+  verbs:
+  - get
+  - list
+  - watch
+  - create
+  - update
+  - patch
+  - delete
+- apiGroups:
+  - certificates.k8s.io
+  resources:
+  - certificatesigningrequests
   verbs:
   - get
   - list
@@ -45,17 +69,7 @@ rules:
   resources:
   - secrets
   - configmaps
-  verbs:
-  - get
-  - list
-  - watch
-  - create
-  - update
-  - patch
-  - delete
-- apiGroups:
-  - ""
-  resources:
+  - events
   - services
   verbs:
   - get

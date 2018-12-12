@@ -14,5 +14,5 @@
 
 FROM lachlanevenson/k8s-kubectl
 RUN apk add --no-cache openssl
-COPY webhook-create-cert.sh /
-ENTRYPOINT ["/webhook-create-cert.sh"]
+COPY create-cert /
+ENTRYPOINT ["sh"]

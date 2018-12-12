@@ -25,3 +25,7 @@ spec:
       containers:
       - name: audit-controller
         image: aunem/audit-controller:latest
+        command: 
+        - "/controller"
+        args:
+        - "-logtostderr=true"

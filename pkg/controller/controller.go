@@ -25,6 +25,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/apimachinery/pkg/util/runtime"
@@ -315,7 +316,7 @@ func (c *Controller) processNextWorkItem() bool {
 
 func (c *Controller) handleClassDelta(class *auditcrdv1alpha1.AuditClass) {
 	// list all backends
-	backends, err := c.auditBackendLister.AuditBackends(metav1.NamespaceAll).List(nil)
+	backends, err := c.auditBackendLister.AuditBackends(metav1.NamespaceAll).List(labels.Everything())
 	if err != nil {
 		runtime.HandleError(err)
 	}
@@ -352,74 +353,80 @@ func (c *Controller) syncHandler(key string) error {
 		runtime.HandleError(fmt.Errorf("invalid resource key: %s", key))
 		return nil
 	}
-
+	klog.Infof("syncing backend name: %q namespace: %q", name, namespace)
 	// Get the Backend resource with this namespace/name
 	backend, err := c.auditBackendLister.AuditBackends(namespace).Get(name)
 	if err != nil {
 		// If the backend no longer exists, then ensure the deployment has been deleted
 		if errors.IsNotFound(err) {
+			klog.Infof("backend %s/%s no longer exists, deleting any leftover resources", namespace, name)
 			// Get the deployment with the name specified in Backend.spec
-			deployment, err := c.deploymentsLister.Deployments(backend.Namespace).Get(backend.Name)
+			deployment, err := c.deploymentsLister.Deployments(namespace).Get(name)
 			// if the error is something other than not found, handle it
 			if !errors.IsNotFound(err) && err != nil {
 				return err
 			}
 			// if the deployment is not nil, delete it
 			if deployment != nil {
-				err := c.kubeclientset.AppsV1().Deployments(backend.Namespace).Delete(backend.Name, nil)
+				err := c.kubeclientset.AppsV1().Deployments(namespace).Delete(name, nil)
 				if err != nil {
 					return err
 				}
 			}
 			// Get the service with the name specified in Backend.spec
-			service, err := c.serviceLister.Services(backend.Namespace).Get(backend.Name)
+			service, err := c.serviceLister.Services(namespace).Get(name)
 			// if the error is something other than not found, handle it
 			if !errors.IsNotFound(err) && err != nil {
 				return err
 			}
 			// if the service is not nil, delete it
 			if service != nil {
-				err := c.kubeclientset.CoreV1().Services(backend.Namespace).Delete(backend.Name, nil)
+				err := c.kubeclientset.CoreV1().Services(namespace).Delete(name, nil)
 				if err != nil {
 					return err
 				}
 			}
 			// Get the sink with the name specified in Backend.spec
-			sink, err := c.auditSinkLister.Get(backend.Name)
+			sink, err := c.auditSinkLister.Get(name)
 			// if the error is something other than not found, handle it
 			if !errors.IsNotFound(err) && err != nil {
 				return err
 			}
 			// if the sink is not nil, delete it
 			if sink != nil {
-				err := c.kubeclientset.AuditregistrationV1alpha1().AuditSinks().Delete(backend.Name, nil)
+				err := c.kubeclientset.AuditregistrationV1alpha1().AuditSinks().Delete(name, nil)
 				if err != nil {
 					return err
 				}
 			}
+			klog.Infof("successfully cleaned up backend %s/%s", namespace, name)
+			return nil
 		}
-
 		return err
 	}
 
-	classes, err := c.auditClassLister.List(nil)
+	classes, err := c.auditClassLister.List(labels.Everything())
 	if err != nil {
 		return err
 	}
-
 	// check that classes exist for backend
 	for _, classRule := range backend.Spec.Policy.ClassRules {
 		if !containsClass(classes, classRule.Name) {
+			klog.Infof("class %q does not exist, aborting provisioning", classRule.Name)
 			c.recorder.Event(backend, corev1.EventTypeWarning, "invalid-class", fmt.Sprintf("class %q does not exist", classRule.Name))
+			return nil
 		}
-		return nil
 	}
 
 	// Get the deployment with the name specified in Backend.spec
 	deployment, err := c.deploymentsLister.Deployments(backend.Namespace).Get(backend.Name)
 	// If the resource doesn't exist, we'll create it
 	if errors.IsNotFound(err) {
+		klog.Infof("creating deployment for backend %s/%s", namespace, name)
 		deployment, err = c.kubeclientset.AppsV1().Deployments(backend.Namespace).Create(newDeployment(backend))
+		if err != nil {
+			return err
+		}
 	}
 	// If an error occurs during Get/Create, we'll requeue the item so we can
 	// attempt processing again later. This could have been caused by a
@@ -432,6 +439,7 @@ func (c *Controller) syncHandler(key string) error {
 	sink, err := c.auditSinkLister.Get(backend.Name)
 	// If the resource doesn't exist, we'll create it
 	if errors.IsNotFound(err) {
+		klog.Infof("creating sink for backend %s/%s", namespace, name)
 		sink, err = c.newAuditSink(backend)
 		if err != nil {
 			return err
@@ -449,6 +457,7 @@ func (c *Controller) syncHandler(key string) error {
 	service, err := c.serviceLister.Services(backend.Namespace).Get(backend.Name)
 	// If the resource doesn't exist, we'll create it
 	if errors.IsNotFound(err) {
+		klog.Infof("creating service for backend %s/%s", namespace, name)
 		service = newService(backend)
 		_, err = c.kubeclientset.CoreV1().Services(backend.Namespace).Create(service)
 		if err != nil {
@@ -492,6 +501,7 @@ func (c *Controller) syncHandler(key string) error {
 		return err
 	}
 
+	klog.Infof("update complete for backend %s/%s", namespace, name)
 	c.recorder.Event(backend, corev1.EventTypeNormal, SuccessSynced, MessageResourceSynced)
 	return nil
 }
@@ -677,8 +687,8 @@ func newDeployment(backend *auditcrdv1alpha1.AuditBackend) *appsv1.Deployment {
 						{
 							Name:    "audit-proxy-init",
 							Image:   "aunem/audit-proxy-init:latest",
-							Command: []string{"/webhook-create-cert.sh"},
-							Args:    []string{fmt.Sprintf("--service=%s", backend.Name), fmt.Sprintf("--secret=%s", backend.Name), fmt.Sprintf("--namespace=%s", backend.Namespace)},
+							Command: []string{"sh", "/create-cert"},
+							Args:    []string{"--service", backend.Name, "--secret", backend.Name, "--namespace", backend.Namespace},
 						},
 					},
 					Containers: []corev1.Container{

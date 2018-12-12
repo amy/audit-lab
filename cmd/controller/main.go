@@ -39,6 +39,8 @@ var (
 )
 
 func main() {
+	klog.InitFlags(nil)
+	flag.Set("logtostderr", "true")
 	flag.Parse()
 
 	// set up signals so we handle the first shutdown signal gracefully

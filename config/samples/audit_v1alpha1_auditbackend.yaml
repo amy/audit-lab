@@ -3,7 +3,19 @@ kind: AuditBackend
 metadata:
   labels:
     controller-tools.k8s.io: "1.0"
-  name: auditbackend-sample
+  name: sample
+  namespace: audit
 spec:
-  # Add fields here
-  foo: bar
+  policy:
+    level: Metadata
+    stages:
+    - RequestReceived
+    - ResponseComplete
+    classRules:
+    - name: sample
+      level: RequestResponse
+      stages:
+      - ResponseComplete
+  webhook:
+    clientConfig:
+      url: "https://test.com"

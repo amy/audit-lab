@@ -50,7 +50,6 @@ spec:
               required:
               - level
               - stages
-              - classRules
               type: object
             webhook:
               properties:
