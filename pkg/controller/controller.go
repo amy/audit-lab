@@ -695,6 +695,24 @@ func newDeployment(backend *auditcrdv1alpha1.AuditBackend) *appsv1.Deployment {
 						{
 							Name:  "audit-proxy",
 							Image: "aunem/audit-proxy:latest",
+							Args:  []string{"-logtostderr", "true"},
+							VolumeMounts: []corev1.VolumeMount{
+								{
+									ReadOnly:  true,
+									Name:      "certs",
+									MountPath: "/etc/webhook/certs",
+								},
+							},
+						},
+					},
+					Volumes: []corev1.Volume{
+						{
+							Name: "certs",
+							VolumeSource: corev1.VolumeSource{
+								Secret: &corev1.SecretVolumeSource{
+									SecretName: backend.Name,
+								},
+							},
 						},
 					},
 				},

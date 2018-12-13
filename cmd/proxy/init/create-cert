@@ -44,6 +44,10 @@ done
 [ -z ${secret} ] && secret=audit-proxy-webhook-certs
 [ -z ${namespace} ] && namespace=audit
 
+echo "--service ${service}"
+echo "--secret ${secret}"
+echo "--namespace ${namespace}"
+
 if [ ! -x "$(command -v openssl)" ]; then
     echo "openssl not found"
     exit 1

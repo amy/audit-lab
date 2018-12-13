@@ -22,7 +22,6 @@ import (
 	"flag"
 	"fmt"
 	"io/ioutil"
-	"log"
 	"net/http"
 	"os"
 	"os/signal"
@@ -33,7 +32,7 @@ import (
 	auditinstall "k8s.io/apiserver/pkg/apis/audit/install"
 	auditv1 "k8s.io/apiserver/pkg/apis/audit/v1"
 	"k8s.io/apiserver/pkg/audit"
-	"k8s.io/klog/glog"
+	"k8s.io/klog"
 )
 
 var (
@@ -50,6 +49,8 @@ type Parameters struct {
 	sidecarCfgFile string // path to sidecar injector configuration file
 }
 
+// ok this proxy should have 2 informers pulled from a lib, that inform on the backend it is set to use and the class objects
+
 func main() {
 	var parameters Parameters
 
@@ -57,6 +58,8 @@ func main() {
 	flag.IntVar(&parameters.port, "port", 443, "Webhook server port.")
 	flag.StringVar(&parameters.certFile, "tlsCertFile", "/etc/webhook/certs/cert.pem", "File containing the x509 Certificate for HTTPS.")
 	flag.StringVar(&parameters.keyFile, "tlsKeyFile", "/etc/webhook/certs/key.pem", "File containing the x509 private key to --tlsCertFile.")
+	klog.InitFlags(nil)
+	flag.Set("logtostderr", "true")
 	flag.Parse()
 
 	scheme := runtime.NewScheme()
@@ -67,7 +70,7 @@ func main() {
 
 	pair, err := tls.LoadX509KeyPair(parameters.certFile, parameters.keyFile)
 	if err != nil {
-		glog.Errorf("Filed to load key pair: %v", err)
+		klog.Errorf("Filed to load key pair: %v", err)
 	}
 
 	server := &http.Server{
@@ -83,7 +86,7 @@ func main() {
 	// start webhook server in new rountine
 	go func() {
 		if err := server.ListenAndServeTLS("", ""); err != nil {
-			glog.Errorf("Filed to listen and serve webhook server: %v", err)
+			klog.Errorf("Filed to listen and serve webhook server: %v", err)
 		}
 	}()
 
@@ -92,19 +95,19 @@ func main() {
 	signal.Notify(signalChan, syscall.SIGINT, syscall.SIGTERM)
 	<-signalChan
 
-	glog.Infof("Got OS shutdown signal, shutting down wenhook server gracefully...")
+	klog.Infof("Got OS shutdown signal, shutting down webhook server gracefully...")
 	server.Shutdown(context.Background())
 }
 
 func handler(w http.ResponseWriter, req *http.Request) {
 	body, err := ioutil.ReadAll(req.Body)
 	if err != nil {
-		log.Fatalf("could not read request body: %v", err)
+		klog.Fatalf("could not read request body: %v", err)
 	}
 	el := &auditv1.EventList{}
 
 	if err := runtime.DecodeInto(decoder, body, el); err != nil {
-		log.Fatalf("failed decoding buf: %b, apiVersion: %s", body, auditv1.SchemeGroupVersion)
+		klog.Fatalf("failed decoding buf: %b, apiVersion: %s", body, auditv1.SchemeGroupVersion)
 	}
 	defer req.Body.Close()
 
@@ -112,7 +115,7 @@ func handler(w http.ResponseWriter, req *http.Request) {
 	for _, event := range el.Items {
 		err := encoder.Encode(&event, os.Stdout)
 		if err != nil {
-			log.Fatalf("could not encode audit event: %v", err)
+			klog.Fatalf("could not encode audit event: %v", err)
 		}
 		fmt.Printf("\n----------\n\n")
 	}
