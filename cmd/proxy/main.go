@@ -32,24 +32,30 @@ import (
 	auditinstall "k8s.io/apiserver/pkg/apis/audit/install"
 	auditv1 "k8s.io/apiserver/pkg/apis/audit/v1"
 	"k8s.io/apiserver/pkg/audit"
+	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/klog"
+
+	auditcrdv1alpha1 "github.com/pbarker/audit-lab/pkg/apis/audit/v1alpha1"
+	auditclientset "github.com/pbarker/audit-lab/pkg/client/clientset/versioned"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 var (
-	events  = []auditv1.Event{}
-	encoder runtime.Encoder
-	decoder runtime.Decoder
+	events     = []auditv1.Event{}
+	encoder    runtime.Encoder
+	decoder    runtime.Decoder
+	masterURL  string
+	kubeconfig string
 )
 
 // Parameters for server
 type Parameters struct {
-	port           int    // webhook server port
-	certFile       string // path to the x509 certificate for https
-	keyFile        string // path to the x509 private key matching `CertFile`
-	sidecarCfgFile string // path to sidecar injector configuration file
+	port                  int    // webhook server port
+	certFile              string // path to the x509 certificate for https
+	keyFile               string // path to the x509 private key matching `CertFile`
+	auditBackendName      string // name of the auditbackend this is implementing
+	auditBackendNamespace string // namespace of the auditbackend
 }
-
-// ok this proxy should have 2 informers pulled from a lib, that inform on the backend it is set to use and the class objects
 
 func main() {
 	var parameters Parameters
@@ -58,9 +64,34 @@ func main() {
 	flag.IntVar(&parameters.port, "port", 443, "Webhook server port.")
 	flag.StringVar(&parameters.certFile, "tlsCertFile", "/etc/webhook/certs/cert.pem", "File containing the x509 Certificate for HTTPS.")
 	flag.StringVar(&parameters.keyFile, "tlsKeyFile", "/etc/webhook/certs/key.pem", "File containing the x509 private key to --tlsCertFile.")
+	flag.StringVar(&parameters.auditBackendNamespace, "namespace", "audit", "namespace of the backend")
+	flag.StringVar(&parameters.auditBackendName, "name", "audit", "name of the backend")
 	klog.InitFlags(nil)
 	flag.Set("logtostderr", "true")
 	flag.Parse()
+
+	cfg, err := clientcmd.BuildConfigFromFlags(masterURL, kubeconfig)
+	if err != nil {
+		klog.Fatalf("Error building kubeconfig: %s", err.Error())
+	}
+	auditclient, err := auditclientset.NewForConfig(cfg)
+	if err != nil {
+		klog.Fatalf("Error creating audit client: %s", err.Error())
+	}
+
+	backend, err := auditclient.Audit().AuditBackends(parameters.auditBackendNamespace).Get(parameters.auditBackendName, metav1.GetOptions{})
+	if err != nil {
+		klog.Fatalf("could not fetch audit backend: %v", err)
+	}
+
+	classes := map[string]*auditcrdv1alpha1.AuditClass{}
+	for _, classRule := range backend.Spec.Policy.ClassRules {
+		class, err := auditclient.Audit().AuditClasses().Get(classRule.Name, metav1.GetOptions{})
+		if err != nil {
+			klog.Fatalf("could not fetch audit class: %v", err)
+		}
+		classes[classRule.Name] = class
+	}
 
 	scheme := runtime.NewScheme()
 	auditinstall.Install(scheme)
