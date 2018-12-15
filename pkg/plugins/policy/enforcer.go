@@ -9,24 +9,56 @@ import (
 	"k8s.io/apiserver/pkg/authorization/authorizer"
 )
 
-// much of this is copied from apiserver/pkg/audit/policy/checker.go but the methods were not exported
-
-type policyChecker struct {
+// Enforcer enforces class rules
+type Enforcer struct {
 	rules []*ClassRule
 }
 
-// NewChecker creates a new policy checker.
-func NewChecker(rules []*ClassRule) policy.Checker {
-	return &policyChecker{rules}
+// NewEnforcer creates a new policy checker.
+func NewEnforcer(rules []*ClassRule) *Enforcer {
+	return &Enforcer{rules}
 }
 
-func (p *policyChecker) LevelAndStages(attrs authorizer.Attributes) (audit.Level, []audit.Stage) {
-	for _, rule := range p.rules {
+// ImposeRules applies the rules to an event
+func (e *Enforcer) ImposeRules(attrs authorizer.Attributes, event *audit.Event) (*audit.Event, error) {
+	// gather all rules that match request
+	matchedLevels := []audit.Level{}
+	for _, rule := range e.rules {
 		if ruleMatches(&rule.Class.Spec, attrs) {
-			return rule.Level, rule.OmitStages
+			if stageMatches(event, rule.Stages) {
+				matchedLevels = append(matchedLevels, rule.Level)
+			}
 		}
 	}
-	return DefaultAuditLevel, p.OmitStages
+	if len(matchedLevels) == 0 {
+		return nil, nil
+	}
+
+	// take the deepest level match
+	var finalLevel audit.Level
+	for _, level := range matchedLevels {
+		if finalLevel.Less(level) {
+			finalLevel = level
+		}
+	}
+
+	ev0 := *event
+	ev, err := policy.EnforcePolicy(&ev0, finalLevel, []audit.Stage{})
+	if err != nil {
+		return nil, err
+	}
+	return ev, nil
+}
+
+// NOTE: much of the code below was copied from apiserver/pkg/audit/policy/checker.go because the methods were not exported.
+
+func stageMatches(event *audit.Event, stages []audit.Stage) bool {
+	for _, stage := range stages {
+		if stage == event.Stage {
+			return true
+		}
+	}
+	return false
 }
 
 // Check whether the rule matches the request attrs.

@@ -22,7 +22,6 @@ import (
 	auditinternal "k8s.io/apiserver/pkg/apis/audit"
 	"k8s.io/apiserver/pkg/audit"
 	ev "k8s.io/apiserver/pkg/audit/event"
-	"k8s.io/apiserver/pkg/audit/policy"
 )
 
 // PluginName is the name reported in error metrics.
@@ -31,14 +30,15 @@ const PluginName = "dynamic_enforced"
 // Backend filters audit events according to the policy
 // trimming them as necessary to match the level
 type Backend struct {
-	classRules      []ClassRule
+	enforcer        *Enforcer
 	delegateBackend audit.Backend
 }
 
 // NewBackend returns an enforced audit backend that wraps delegate backend.
 // Enforced backend automatically runs and shuts down the delegate backend.
-func NewBackend(delegate audit.Backend, p policy.Checker) audit.Backend {
+func NewBackend(delegate audit.Backend, e *Enforcer) audit.Backend {
 	return &Backend{
+		enforcer:        e,
 		delegateBackend: delegate,
 	}
 }
@@ -65,25 +65,12 @@ func (b Backend) ProcessEvents(events ...*auditinternal.Event) bool {
 			audit.HandlePluginError(PluginName, err, event)
 			continue
 		}
-		// the magic happens here
-		for _, classRule := range b.classRules {
-			// does class rule match?
-			if ruleMatches(&classRule.Class.Spec, attr) {
-				e0 := *event
-				e, err := policy.EnforcePolicy(&e0, classRule.Level, classRule.OmitStages)
-				if err != nil {
-					audit.HandlePluginError(PluginName, err, event)
-					continue
-				}
 
-				// should we log potentially duplicates or break on first match or log at the highest level given?
-				if e == nil {
-					continue
-				}
-				b.delegateBackend.ProcessEvents(e)
-			}
+		e, err := b.enforcer.ImposeRules(attr, event)
+		if e == nil {
+			continue
 		}
-
+		b.delegateBackend.ProcessEvents(e)
 	}
 	// Returning true regardless of results, since dynamic audit backends
 	// can never cause apiserver request to fail.

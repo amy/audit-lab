@@ -163,6 +163,11 @@ func NewController(
 	auditBackendInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: controller.enqueueAuditBackend,
 		UpdateFunc: func(old, new interface{}) {
+			oldBackend := old.(*auditcrdv1alpha1.AuditBackend)
+			newBackend := new.(*auditcrdv1alpha1.AuditBackend)
+			if oldBackend.ResourceVersion == newBackend.ResourceVersion {
+				return
+			}
 			controller.enqueueAuditBackend(new)
 		},
 		DeleteFunc: controller.enqueueAuditBackend,
@@ -174,6 +179,11 @@ func NewController(
 			controller.handleClassDelta(obj.(*auditcrdv1alpha1.AuditClass))
 		},
 		UpdateFunc: func(old, new interface{}) {
+			oldClass := old.(*auditcrdv1alpha1.AuditClass)
+			newClass := new.(*auditcrdv1alpha1.AuditClass)
+			if oldClass.ResourceVersion == newClass.ResourceVersion {
+				return
+			}
 			controller.handleClassDelta(new.(*auditcrdv1alpha1.AuditClass))
 		},
 		DeleteFunc: func(obj interface{}) {
@@ -315,6 +325,7 @@ func (c *Controller) processNextWorkItem() bool {
 }
 
 func (c *Controller) handleClassDelta(class *auditcrdv1alpha1.AuditClass) {
+	klog.Infof("handling class delta for %q", class.Name)
 	// list all backends
 	backends, err := c.auditBackendLister.AuditBackends(metav1.NamespaceAll).List(labels.Everything())
 	if err != nil {
@@ -323,12 +334,6 @@ func (c *Controller) handleClassDelta(class *auditcrdv1alpha1.AuditClass) {
 	// see which ones have the class
 	for _, backend := range backends {
 		if hasClass(backend, class) {
-			// trigger backend update
-			// backend.Labels["classdelta"] = string(time.Now().Unix())
-			// _, err := c.auditcrdclientset.AuditV1alpha1().AuditBackends(backend.Namespace).Update(backend)
-			// if err != nil {
-			// 	runtime.HandleError(err)
-			// }
 			c.enqueueAuditBackend(backend)
 		}
 	}
@@ -402,6 +407,7 @@ func (c *Controller) syncHandler(key string) error {
 			klog.Infof("successfully cleaned up backend %s/%s", namespace, name)
 			return nil
 		}
+		klog.Errorf("could not get backend in sync: %v", err)
 		return err
 	}
 
@@ -424,9 +430,10 @@ func (c *Controller) syncHandler(key string) error {
 	if errors.IsNotFound(err) {
 		klog.Infof("creating deployment for backend %s/%s", namespace, name)
 		deployment, err = c.kubeclientset.AppsV1().Deployments(backend.Namespace).Create(newDeployment(backend))
-		if err != nil {
-			return err
-		}
+	} else if err == nil {
+		// roll in all other cases so that config will be reloaded
+		klog.Infof("rolling deployment for backend %s/%s", namespace, name)
+		deployment, err = c.kubeclientset.AppsV1().Deployments(backend.Namespace).Update(newDeployment(backend))
 	}
 	// If an error occurs during Get/Create, we'll requeue the item so we can
 	// attempt processing again later. This could have been caused by a
@@ -475,6 +482,7 @@ func (c *Controller) syncHandler(key string) error {
 			return err
 		}
 	}
+
 	// If the Sink is not controlled by this Backend resource, update the deployment
 	if !metav1.IsControlledBy(sink, backend) {
 		sink, err = c.newAuditSink(backend)
@@ -695,12 +703,18 @@ func newDeployment(backend *auditcrdv1alpha1.AuditBackend) *appsv1.Deployment {
 						{
 							Name:  "audit-proxy",
 							Image: "aunem/audit-proxy:latest",
-							Args:  []string{"-logtostderr", "true"},
+							Args:  []string{"--backendname", backend.Name, "--backendnamespace", backend.Namespace},
 							VolumeMounts: []corev1.VolumeMount{
 								{
 									ReadOnly:  true,
 									Name:      "certs",
 									MountPath: "/etc/webhook/certs",
+								},
+							},
+							Env: []corev1.EnvVar{
+								{
+									Name:  "delta",
+									Value: fmt.Sprintf("%d", time.Now().Unix()),
 								},
 							},
 						},
