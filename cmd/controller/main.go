@@ -69,6 +69,7 @@ func main() {
 		backendClient,
 		kubeInformerFactory.Apps().V1().Deployments(),
 		kubeInformerFactory.Core().V1().Services(),
+		kubeInformerFactory.Core().V1().Secrets(),
 		kubeInformerFactory.Auditregistration().V1alpha1().AuditSinks(),
 		auditInformerFactory.Audit().V1alpha1().AuditBackends(),
 		auditInformerFactory.Audit().V1alpha1().AuditClasses(),

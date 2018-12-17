@@ -82,6 +82,9 @@ type Controller struct {
 	serviceLister corelisters.ServiceLister
 	serviceSynced cache.InformerSynced
 
+	secretLister corelisters.SecretLister
+	secretSynced cache.InformerSynced
+
 	auditSinkLister auditreglisters.AuditSinkLister
 	auditSinkSynced cache.InformerSynced
 
@@ -109,6 +112,7 @@ func NewController(
 	auditcrdclientset clientset.Interface,
 	deploymentInformer appsinformers.DeploymentInformer,
 	serviceInformer coreinformers.ServiceInformer,
+	secretInformer coreinformers.SecretInformer,
 	auditSinkInformer auditreginformers.AuditSinkInformer,
 	auditBackendInformer informers.AuditBackendInformer,
 	auditClassInformer informers.AuditClassInformer,
@@ -131,6 +135,8 @@ func NewController(
 		deploymentsSynced:  deploymentInformer.Informer().HasSynced,
 		serviceLister:      serviceInformer.Lister(),
 		serviceSynced:      serviceInformer.Informer().HasSynced,
+		secretLister:       secretInformer.Lister(),
+		secretSynced:       secretInformer.Informer().HasSynced,
 		auditSinkLister:    auditSinkInformer.Lister(),
 		auditSinkSynced:    auditSinkInformer.Informer().HasSynced,
 		auditBackendLister: auditBackendInformer.Lister(),
@@ -219,8 +225,6 @@ func NewController(
 			newService := new.(*corev1.Service)
 			oldService := old.(*corev1.Service)
 			if newService.ResourceVersion == oldService.ResourceVersion {
-				// Periodic resync will send update events for all known Deployments.
-				// Two different versions of the same Deployment will always have different RVs.
 				return
 			}
 			controller.handleObject(new)
@@ -378,6 +382,20 @@ func (c *Controller) syncHandler(key string) error {
 					return err
 				}
 			}
+
+			// Get the secret with the name specified in Backend.spec
+			secret, err := c.secretLister.Secrets(namespace).Get(name)
+			// if the error is something other than not found, handle it
+			if !errors.IsNotFound(err) && err != nil {
+				return err
+			}
+			// if the secret is not nil, delete it
+			if secret != nil {
+				err := c.kubeclientset.CoreV1().Secrets(namespace).Delete(name, nil)
+				if err != nil {
+					return err
+				}
+			}
 			// Get the service with the name specified in Backend.spec
 			service, err := c.serviceLister.Services(namespace).Get(name)
 			// if the error is something other than not found, handle it
@@ -435,9 +453,17 @@ func (c *Controller) syncHandler(key string) error {
 		klog.Infof("rolling deployment for backend %s/%s", namespace, name)
 		deployment, err = c.kubeclientset.AppsV1().Deployments(backend.Namespace).Update(newDeployment(backend))
 	}
-	// If an error occurs during Get/Create, we'll requeue the item so we can
-	// attempt processing again later. This could have been caused by a
-	// temporary network failure, or any other transient reason.
+	if err != nil {
+		return err
+	}
+
+	// Get the secret with the name specified in Backend.spec
+	_, err = c.secretLister.Secrets(backend.Namespace).Get(backend.Name)
+	// If the resource doesn't exist, we'll create it
+	if errors.IsNotFound(err) {
+		klog.Infof("creating deployment for backend %s/%s", namespace, name)
+		_, err = c.kubeclientset.CoreV1().Secrets(backend.Namespace).Create(newSecret(backend))
+	}
 	if err != nil {
 		return err
 	}
@@ -730,6 +756,22 @@ func newDeployment(backend *auditcrdv1alpha1.AuditBackend) *appsv1.Deployment {
 						},
 					},
 				},
+			},
+		},
+	}
+}
+
+func newSecret(backend *auditcrdv1alpha1.AuditBackend) *corev1.Secret {
+	return &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      backend.Name,
+			Namespace: backend.Namespace,
+			OwnerReferences: []metav1.OwnerReference{
+				*metav1.NewControllerRef(backend, schema.GroupVersionKind{
+					Group:   auditcrdv1alpha1.SchemeGroupVersion.Group,
+					Version: auditcrdv1alpha1.SchemeGroupVersion.Version,
+					Kind:    "AuditBackend",
+				}),
 			},
 		},
 	}
